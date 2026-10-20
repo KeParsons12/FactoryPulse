@@ -1,0 +1,145 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IMachineSimulation MachineSimulation
+
+<PageTitle>FactoryPulse | Live Dashboard</PageTitle>
+
+<div class="dashboard-shell">
+    <header class="dashboard-header">
+        <div>
+            <p class="eyebrow">Manufacturing monitor</p>
+            <h1>FactoryPulse</h1>
+        </div>
+        <div class="simulation-label">
+            <span class="simulation-dot" aria-hidden="true"></span>
+            Simulated data
+        </div>
+    </header>
+
+    <section class="machine-panel" aria-labelledby="machine-name">
+        <div class="machine-heading">
+            <div>
+                <p class="section-label">Production asset</p>
+                <h2 id="machine-name">@machine.MachineName</h2>
+                <p class="machine-id">ID: @machine.MachineId</p>
+            </div>
+            <div class="status-pill status-@machine.CurrentState.ToString().ToLowerInvariant()">
+                <span class="status-indicator" aria-hidden="true"></span>
+                @machine.CurrentState
+            </div>
+        </div>
+
+        <div class="metric-grid">
+            <article class="metric-card primary-metric">
+                <p>Completed units</p>
+                <strong>@machine.CompletedUnitCount.ToString("N0")</strong>
+            </article>
+            <article class="metric-card">
+                <p>Good units</p>
+                <strong>@machine.GoodUnitCount.ToString("N0")</strong>
+            </article>
+            <article class="metric-card">
+                <p>Rejected units</p>
+                <strong>@machine.RejectedUnitCount.ToString("N0")</strong>
+            </article>
+        </div>
+    </section>
+
+    <section class="events-panel" aria-labelledby="events-heading">
+        <div class="events-heading">
+            <div>
+                <p class="section-label">Live activity</p>
+                <h2 id="events-heading">Recent production events</h2>
+            </div>
+            <span class="event-count">Latest 20</span>
+        </div>
+
+        @if (recentEvents.Count == 0)
+        {
+            <div class="empty-state">
+                <p>Waiting for the first completed unit…</p>
+            </div>
+        }
+        else
+        {
+            <div class="event-table-wrapper">
+                <table class="event-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Machine</th>
+                            <th>Event</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var productionEvent in recentEvents)
+                        {
+                            <tr>
+                                <td>
+                                    <time datetime="@productionEvent.Timestamp.ToString("O")">
+                                        @productionEvent.Timestamp.ToLocalTime().ToString("MMM d, yyyy · HH:mm:ss")
+                                    </time>
+                                </td>
+                                <td>@productionEvent.MachineId</td>
+                                <td><span class="event-type">Unit completed</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private readonly CancellationTokenSource refreshCancellation = new();
+    private MachineSnapshot machine = new(
+        "machine-01", "Machine 01", MachineState.Running, 0, 0, 0);
+    private IReadOnlyList<ProductionEvent> recentEvents = [];
+    private PeriodicTimer? refreshTimer;
+    private Task? refreshTask;
+
+    protected override void OnInitialized()
+    {
+        RefreshSnapshots();
+        refreshTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        refreshTask = RefreshDashboardAsync(refreshCancellation.Token);
+    }
+
+    private async Task RefreshDashboardAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (refreshTimer is not null &&
+                   await refreshTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                RefreshSnapshots();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Expected when the component is removed or the circuit closes.
+        }
+    }
+
+    private void RefreshSnapshots()
+    {
+        machine = MachineSimulation.GetMachineSnapshot();
+        recentEvents = MachineSimulation.GetRecentEvents();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await refreshCancellation.CancelAsync();
+        refreshTimer?.Dispose();
+
+        if (refreshTask is not null)
+        {
+            await refreshTask;
+        }
+
+        refreshCancellation.Dispose();
+    }
+}
