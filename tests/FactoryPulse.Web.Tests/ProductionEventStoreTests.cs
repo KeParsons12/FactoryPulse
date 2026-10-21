@@ -2,6 +2,8 @@ using FactoryPulse.Web.Data;
 using FactoryPulse.Web.Models;
 using FactoryPulse.Web.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FactoryPulse.Web.Tests;
@@ -19,12 +21,12 @@ public sealed class ProductionEventStoreTests
         await store.StartAsync(CancellationToken.None);
 
         var expectedDuration = TimeSpan.FromSeconds(42.75);
-        store.Enqueue(new ProductionEvent(
+        Assert.True(store.TryEnqueue(new ProductionEvent(
             "machine-01",
             InitialTime,
             ProductionEventType.FaultCleared,
             "SIM-101 — Simulated sensor fault",
-            expectedDuration));
+            expectedDuration)));
         await store.FlushAsync();
 
         var storedEvent = Assert.Single(await store.GetRecentEventsAsync());
@@ -44,7 +46,8 @@ public sealed class ProductionEventStoreTests
         using var database = new TemporaryDatabase();
         var firstStore = CreateStore(database.Path);
         await firstStore.StartAsync(CancellationToken.None);
-        firstStore.Enqueue(CreateEvent(ProductionEventType.MachineStopped, InitialTime));
+        Assert.True(firstStore.TryEnqueue(
+            CreateEvent(ProductionEventType.MachineStopped, InitialTime)));
         await firstStore.StopAsync(CancellationToken.None);
 
         var recreatedStore = CreateStore(database.Path);
@@ -64,9 +67,12 @@ public sealed class ProductionEventStoreTests
         var store = CreateStore(database.Path);
         await store.StartAsync(CancellationToken.None);
 
-        store.Enqueue(CreateEvent(ProductionEventType.MachineStarted, InitialTime));
-        store.Enqueue(CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddMinutes(1)));
-        store.Enqueue(CreateEvent(ProductionEventType.MachineStopped, InitialTime.AddMinutes(1)));
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.MachineStarted, InitialTime)));
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddMinutes(1))));
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.MachineStopped, InitialTime.AddMinutes(1))));
         await store.FlushAsync();
 
         var storedEvents = await store.GetRecentEventsAsync();
@@ -92,9 +98,9 @@ public sealed class ProductionEventStoreTests
 
         for (var index = 0; index < 50; index++)
         {
-            store.Enqueue(CreateEvent(
+            Assert.True(store.TryEnqueue(CreateEvent(
                 ProductionEventType.UnitCompleted,
-                InitialTime.AddSeconds(index)));
+                InitialTime.AddSeconds(index))));
         }
 
         await store.FlushAsync();
@@ -200,18 +206,129 @@ public sealed class ProductionEventStoreTests
         await clearedStore.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task PermanentWriteFailureInterlocksSimulationAndBecomesObservable()
+    {
+        using var database = new TemporaryDatabase();
+        var options = new ProductionEventStoreOptions
+        {
+            QueueCapacity = 4,
+            MaximumWriteAttempts = 2,
+            RetryDelay = TimeSpan.Zero
+        };
+        var store = CreateStore(
+            database.Path,
+            options,
+            new FailingSaveChangesInterceptor(int.MaxValue));
+        await store.StartAsync(CancellationToken.None);
+        using var simulator = new MachineSimulator(
+            new ManualTimeProvider(InitialTime),
+            store,
+            NullLogger<MachineSimulator>.Instance);
+
+        Assert.True(simulator.TryStart());
+        await Assert.ThrowsAsync<PersistenceUnavailableException>(() => store.FlushAsync());
+
+        var health = store.GetHealthSnapshot();
+        Assert.Equal(PersistenceHealthStatus.Unavailable, health.Status);
+        Assert.Equal(1, health.PendingEventCount);
+        Assert.NotNull(health.Message);
+        Assert.False(simulator.SimulateProductionCycle());
+        Assert.False(simulator.TryStop());
+        Assert.Equal(0, simulator.GetMachineSnapshot().CompletedUnitCount);
+        Assert.False(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddSeconds(1))));
+        await Assert.ThrowsAnyAsync<Exception>(() => store.StopAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TransientWriteFailuresRecoverWithoutLosingTheEvent()
+    {
+        using var database = new TemporaryDatabase();
+        var options = new ProductionEventStoreOptions
+        {
+            QueueCapacity = 4,
+            MaximumWriteAttempts = 3,
+            RetryDelay = TimeSpan.Zero
+        };
+        var store = CreateStore(
+            database.Path,
+            options,
+            new FailingSaveChangesInterceptor(failuresBeforeSuccess: 2));
+        await store.StartAsync(CancellationToken.None);
+
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.MachineStarted, InitialTime)));
+        await store.FlushAsync();
+
+        var health = store.GetHealthSnapshot();
+        Assert.Equal(PersistenceHealthStatus.Healthy, health.Status);
+        Assert.Equal(0, health.PendingEventCount);
+        Assert.Single(await store.GetRecentEventsAsync());
+        await store.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task BoundedQueueRejectsOverflowAndRecoversAfterDrain()
+    {
+        using var database = new TemporaryDatabase();
+        var interceptor = new BlockingSaveChangesInterceptor();
+        var options = new ProductionEventStoreOptions
+        {
+            QueueCapacity = 3,
+            MaximumWriteAttempts = 1,
+            RetryDelay = TimeSpan.Zero
+        };
+        var store = CreateStore(database.Path, options, interceptor);
+        await store.StartAsync(CancellationToken.None);
+
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime)));
+        await interceptor.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddSeconds(1))));
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddSeconds(2))));
+        Assert.False(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddSeconds(3))));
+
+        var fullHealth = store.GetHealthSnapshot();
+        Assert.Equal(PersistenceHealthStatus.Backpressured, fullHealth.Status);
+        Assert.Equal(3, fullHealth.PendingEventCount);
+        Assert.Equal(3, fullHealth.QueueCapacity);
+
+        interceptor.AllowWrites.TrySetResult();
+        await store.FlushAsync();
+
+        var recoveredHealth = store.GetHealthSnapshot();
+        Assert.Equal(PersistenceHealthStatus.Healthy, recoveredHealth.Status);
+        Assert.Equal(0, recoveredHealth.PendingEventCount);
+        Assert.Equal(3, (await store.GetRecentEventsAsync(10)).Count);
+
+        Assert.True(store.TryEnqueue(
+            CreateEvent(ProductionEventType.UnitCompleted, InitialTime.AddSeconds(4))));
+        await store.FlushAsync();
+        Assert.Equal(4, (await store.GetRecentEventsAsync(10)).Count);
+        await store.StopAsync(CancellationToken.None);
+    }
+
     private static ProductionEvent CreateEvent(
         ProductionEventType eventType,
         DateTimeOffset timestamp) =>
         new("machine-01", timestamp, eventType, eventType.ToString());
 
-    private static ProductionEventStore CreateStore(string databasePath)
+    private static ProductionEventStore CreateStore(
+        string databasePath,
+        ProductionEventStoreOptions? storeOptions = null,
+        params IInterceptor[] interceptors)
     {
         var options = new DbContextOptionsBuilder<FactoryPulseDbContext>()
             .UseSqlite($"Data Source={databasePath}")
+            .AddInterceptors(interceptors)
             .Options;
         return new ProductionEventStore(
             new TestDbContextFactory(options),
+            Options.Create(storeOptions ?? new ProductionEventStoreOptions()),
             NullLogger<ProductionEventStore>.Instance);
     }
 
@@ -229,6 +346,44 @@ public sealed class ProductionEventStoreTests
         public override DateTimeOffset GetUtcNow() => _utcNow;
 
         public void Advance(TimeSpan duration) => _utcNow += duration;
+    }
+
+    private sealed class FailingSaveChangesInterceptor(int failuresBeforeSuccess)
+        : SaveChangesInterceptor
+    {
+        private int _remainingFailures = failuresBeforeSuccess;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Decrement(ref _remainingFailures) >= 0)
+            {
+                throw new InvalidOperationException("Deterministic database write failure.");
+            }
+
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private sealed class BlockingSaveChangesInterceptor : SaveChangesInterceptor
+    {
+        public TaskCompletionSource WriteStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource AllowWrites { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            WriteStarted.TrySetResult();
+            await AllowWrites.Task.WaitAsync(cancellationToken);
+            return result;
+        }
     }
 
     private sealed class TemporaryDatabase : IDisposable

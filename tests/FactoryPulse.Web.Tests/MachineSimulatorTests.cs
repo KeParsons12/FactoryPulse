@@ -171,6 +171,27 @@ public sealed class MachineSimulatorTests
             Assert.Equal(ProductionEventType.UnitCompleted, machineEvent.EventType));
     }
 
+    [Fact]
+    public void RejectedPersistenceEventsDoNotChangeStateOrCounters()
+    {
+        var eventStore = new RecordingEventStore();
+        using var simulator = new MachineSimulator(
+            new ManualTimeProvider(InitialTime),
+            eventStore,
+            NullLogger<MachineSimulator>.Instance);
+
+        Assert.True(simulator.TryStart());
+        eventStore.AcceptEvents = false;
+
+        Assert.False(simulator.SimulateProductionCycle());
+        Assert.False(simulator.TryStop());
+
+        var snapshot = simulator.GetMachineSnapshot();
+        Assert.Equal(MachineState.Running, snapshot.CurrentState);
+        Assert.Equal(0, snapshot.CompletedUnitCount);
+        Assert.Single(simulator.GetRecentEvents());
+    }
+
     private static MachineSimulator CreateSimulator(TimeProvider? timeProvider = null) =>
         new(timeProvider ?? new ManualTimeProvider(InitialTime),
             new RecordingEventStore(),
@@ -180,7 +201,24 @@ public sealed class MachineSimulatorTests
     {
         public List<ProductionEvent> Events { get; } = [];
 
-        public void Enqueue(ProductionEvent machineEvent) => Events.Add(machineEvent);
+        public bool AcceptEvents { get; set; } = true;
+
+        public bool TryEnqueue(ProductionEvent machineEvent)
+        {
+            if (!AcceptEvents)
+            {
+                return false;
+            }
+
+            Events.Add(machineEvent);
+            return true;
+        }
+
+        public PersistenceHealthSnapshot GetHealthSnapshot() => new(
+            PersistenceHealthStatus.Healthy,
+            PendingEventCount: 0,
+            QueueCapacity: 100,
+            Message: null);
 
         public Task<IReadOnlyList<ProductionEvent>> GetRecentEventsAsync(
             int count = 20,

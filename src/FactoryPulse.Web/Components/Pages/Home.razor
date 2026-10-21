@@ -18,6 +18,23 @@
         </div>
     </header>
 
+    @if (persistenceHealth.Status != PersistenceHealthStatus.Healthy)
+    {
+        <section class="persistence-alert persistence-@persistenceHealth.Status.ToString().ToLowerInvariant()"
+                 role="alert"
+                 aria-labelledby="persistence-heading">
+            <div>
+                <p class="section-label">Event persistence</p>
+                <h2 id="persistence-heading">@GetPersistenceHeading(persistenceHealth.Status)</h2>
+                <p>@persistenceHealth.Message</p>
+            </div>
+            <div class="persistence-count">
+                <span>Accepted but not yet durable</span>
+                <strong>@persistenceHealth.PendingEventCount / @persistenceHealth.QueueCapacity</strong>
+            </div>
+        </section>
+    }
+
     <section class="machine-panel" aria-labelledby="machine-name">
         <div class="machine-heading">
             <div>
@@ -57,25 +74,25 @@
             <div class="control-buttons">
                 <button type="button"
                         class="control-button start-button"
-                        disabled="@(machine.CurrentState != MachineState.Idle)"
+                        disabled="@(machine.CurrentState != MachineState.Idle || !PersistenceIsHealthy)"
                         @onclick="StartMachine">
                     Start
                 </button>
                 <button type="button"
                         class="control-button"
-                        disabled="@(machine.CurrentState != MachineState.Running)"
+                        disabled="@(machine.CurrentState != MachineState.Running || !PersistenceIsHealthy)"
                         @onclick="StopMachine">
                     Stop
                 </button>
                 <button type="button"
                         class="control-button fault-button"
-                        disabled="@(machine.CurrentState is not (MachineState.Running or MachineState.Idle))"
+                        disabled="@(machine.CurrentState is not (MachineState.Running or MachineState.Idle) || !PersistenceIsHealthy)"
                         @onclick="InjectFault">
                     Inject Fault
                 </button>
                 <button type="button"
                         class="control-button clear-button"
-                        disabled="@(machine.CurrentState != MachineState.Faulted)"
+                        disabled="@(machine.CurrentState != MachineState.Faulted || !PersistenceIsHealthy)"
                         @onclick="ClearFault">
                     Clear Fault
                 </button>
@@ -166,6 +183,8 @@
     private MachineSnapshot machine = new(
         "machine-01", "Machine 01", MachineState.Idle, 0, 0, 0, null);
     private IReadOnlyList<ProductionEvent> recentEvents = [];
+    private PersistenceHealthSnapshot persistenceHealth = new(
+        PersistenceHealthStatus.Healthy, 0, 100, null);
     private PeriodicTimer? refreshTimer;
     private Task? refreshTask;
     private string? commandMessage;
@@ -212,24 +231,63 @@
     private async Task ExecuteCommandAsync(string commandName, Func<bool> command)
     {
         var accepted = command();
+        var persistenceFailed = false;
         if (accepted)
         {
-            await EventStore.FlushAsync(refreshCancellation.Token);
+            try
+            {
+                await EventStore.FlushAsync(refreshCancellation.Token);
+            }
+            catch (PersistenceUnavailableException)
+            {
+                persistenceFailed = true;
+            }
         }
 
         await RefreshSnapshotsAsync(refreshCancellation.Token);
-        commandMessage = accepted
-            ? $"{commandName} command accepted."
-            : $"{commandName} command rejected while the machine is {machine.CurrentState}.";
+        commandMessage = (accepted, persistenceFailed, PersistenceIsHealthy) switch
+        {
+            (true, false, true) => $"{commandName} command accepted and persisted.",
+            (true, true, _) =>
+                $"{commandName} changed the simulator, but its event was not persisted. Simulation activity is interlocked.",
+            (false, _, false) =>
+                $"{commandName} command rejected because event persistence is {persistenceHealth.Status}.",
+            _ => $"{commandName} command rejected while the machine is {machine.CurrentState}."
+        };
     }
 
     private async Task RefreshSnapshotsAsync(CancellationToken cancellationToken = default)
     {
         machine = MachineSimulation.GetMachineSnapshot();
-        recentEvents = await EventStore.GetRecentEventsAsync(
-            MachineSimulator.MaximumRecentEventCount,
-            cancellationToken);
+        persistenceHealth = EventStore.GetHealthSnapshot();
+
+        if (persistenceHealth.Status == PersistenceHealthStatus.Unavailable)
+        {
+            return;
+        }
+
+        try
+        {
+            recentEvents = await EventStore.GetRecentEventsAsync(
+                MachineSimulator.MaximumRecentEventCount,
+                cancellationToken);
+        }
+        catch (PersistenceUnavailableException)
+        {
+            persistenceHealth = EventStore.GetHealthSnapshot();
+        }
     }
+
+    private bool PersistenceIsHealthy =>
+        persistenceHealth.Status == PersistenceHealthStatus.Healthy;
+
+    private static string GetPersistenceHeading(PersistenceHealthStatus status) => status switch
+    {
+        PersistenceHealthStatus.Retrying => "Database write retry in progress",
+        PersistenceHealthStatus.Backpressured => "Event queue is full",
+        PersistenceHealthStatus.Unavailable => "Event persistence unavailable",
+        _ => "Event persistence healthy"
+    };
 
     private static string GetEventLabel(ProductionEventType eventType) => eventType switch
     {

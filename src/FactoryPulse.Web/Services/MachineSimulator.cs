@@ -73,8 +73,14 @@ public sealed class MachineSimulator(
                 return false;
             }
 
+            if (!TryAddEventLocked(
+                    ProductionEventType.MachineStarted,
+                    "Machine started"))
+            {
+                return false;
+            }
+
             _currentState = MachineState.Running;
-            AddEventLocked(ProductionEventType.MachineStarted, "Machine started");
             return true;
         }
     }
@@ -88,8 +94,14 @@ public sealed class MachineSimulator(
                 return false;
             }
 
+            if (!TryAddEventLocked(
+                    ProductionEventType.MachineStopped,
+                    "Machine stopped"))
+            {
+                return false;
+            }
+
             _currentState = MachineState.Idle;
-            AddEventLocked(ProductionEventType.MachineStopped, "Machine stopped");
             return true;
         }
     }
@@ -104,15 +116,19 @@ public sealed class MachineSimulator(
             }
 
             var startedAtUtc = _timeProvider.GetUtcNow();
+            if (!TryAddEventLocked(
+                    ProductionEventType.FaultRaised,
+                    $"{SimulatedFaultCode} — {SimulatedFaultDescription}",
+                    timestamp: startedAtUtc))
+            {
+                return false;
+            }
+
             _activeFault = new ActiveFault(
                 SimulatedFaultCode,
                 SimulatedFaultDescription,
                 startedAtUtc);
             _currentState = MachineState.Faulted;
-            AddEventLocked(
-                ProductionEventType.FaultRaised,
-                $"{SimulatedFaultCode} — {SimulatedFaultDescription}",
-                timestamp: startedAtUtc);
             return true;
         }
     }
@@ -132,13 +148,17 @@ public sealed class MachineSimulator(
                 : TimeSpan.Zero;
             var details = $"{_activeFault.Code} — {_activeFault.Description}";
 
+            if (!TryAddEventLocked(
+                    ProductionEventType.FaultCleared,
+                    details,
+                    duration,
+                    clearedAtUtc))
+            {
+                return false;
+            }
+
             _activeFault = null;
             _currentState = MachineState.Idle;
-            AddEventLocked(
-                ProductionEventType.FaultCleared,
-                details,
-                duration,
-                clearedAtUtc);
             return true;
         }
     }
@@ -178,11 +198,15 @@ public sealed class MachineSimulator(
                 return false;
             }
 
+            if (!TryAddEventLocked(
+                    ProductionEventType.UnitCompleted,
+                    "Good unit completed"))
+            {
+                return false;
+            }
+
             _completedUnitCount++;
             _goodUnitCount++;
-            AddEventLocked(
-                ProductionEventType.UnitCompleted,
-                "Good unit completed");
             return true;
         }
     }
@@ -214,7 +238,7 @@ public sealed class MachineSimulator(
             latestFaultEvent.Timestamp);
     }
 
-    private void AddEventLocked(
+    private bool TryAddEventLocked(
         ProductionEventType eventType,
         string details,
         TimeSpan? duration = null,
@@ -227,13 +251,19 @@ public sealed class MachineSimulator(
             details,
             duration);
 
+        if (!_eventStore.TryEnqueue(machineEvent))
+        {
+            return false;
+        }
+
         _recentEvents.Enqueue(machineEvent);
-        _eventStore.Enqueue(machineEvent);
 
         while (_recentEvents.Count > MaximumRecentEventCount)
         {
             _recentEvents.Dequeue();
         }
+
+        return true;
     }
 
     private sealed record ActiveFault(

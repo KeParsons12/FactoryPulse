@@ -4,7 +4,9 @@ namespace FactoryPulse.Web.Services;
 
 public interface IProductionEventStore
 {
-    void Enqueue(ProductionEvent machineEvent);
+    bool TryEnqueue(ProductionEvent machineEvent);
+
+    PersistenceHealthSnapshot GetHealthSnapshot();
 
     Task<IReadOnlyList<ProductionEvent>> GetRecentEventsAsync(
         int count = 20,

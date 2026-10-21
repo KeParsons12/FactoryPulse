@@ -35,6 +35,8 @@ var sqliteConnectionString = new SqliteConnectionStringBuilder
 
 builder.Services.AddDbContextFactory<FactoryPulseDbContext>(options =>
     options.UseSqlite(sqliteConnectionString));
+builder.Services.Configure<ProductionEventStoreOptions>(
+    builder.Configuration.GetSection(ProductionEventStoreOptions.ConfigurationSection));
 builder.Services.AddSingleton<ProductionEventStore>();
 builder.Services.AddSingleton<IProductionEventStore>(services =>
     services.GetRequiredService<ProductionEventStore>());
