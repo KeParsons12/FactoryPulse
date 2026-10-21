@@ -18,8 +18,9 @@ Use the same terminal for the external simulator controls:
 - `C` clears the external fault.
 - `Q` gracefully stops both applications.
 - `Ctrl+C` also stops both applications.
+- Closing the launcher terminal forcibly ends both launcher-owned process trees.
 
-The launcher prefixes child output with `[OPC]` or `[WEB]`. If either application exits unexpectedly, it reports the failure and stops the remaining application. Graceful web shutdown follows the normal hosted-service path so accepted SQLite events can be flushed. A child that does not stop within 15 seconds is terminated by its specific owned process tree; unrelated `dotnet` processes are never targeted.
+The launcher prefixes child output with `[OPC]` or `[WEB]`. If either application exits unexpectedly, it reports the failure and stops the remaining application. Graceful web shutdown follows the normal hosted-service path so accepted SQLite events can be flushed. On Windows, both child process trees are assigned to a private Job Object configured to terminate them if the launcher is forcibly closed, including when its terminal window closes. A child that does not stop within 15 seconds is terminated by its specific owned process tree; unrelated `dotnet` processes are never targeted.
 
 The SQLite database is created automatically at `%LOCALAPPDATA%\FactoryPulse\factorypulse.db`. Set `FactoryPulse:DatabasePath` to override that location. Production totals reset on restart. An uncleared fault is reconstructed from persisted fault events; otherwise the internal simulator starts Idle.
 

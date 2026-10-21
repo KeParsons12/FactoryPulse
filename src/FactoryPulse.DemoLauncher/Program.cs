@@ -16,6 +16,7 @@ var webProject = Path.Combine(
     "FactoryPulse.Web",
     "FactoryPulse.Web.csproj");
 
+using var processJob = WindowsJobObject.CreateKillOnClose();
 using var shutdown = new CancellationTokenSource();
 var shutdownReason = "Demo stopped.";
 var requestedShutdown = false;
@@ -44,7 +45,8 @@ try
         "OPC",
         repositoryRoot,
         simulatorProject,
-        launchProfile: null);
+        launchProfile: null,
+        processJob);
     await WaitForTcpAsync(
         "localhost",
         opcUaPort,
@@ -58,7 +60,8 @@ try
         "WEB",
         Path.GetDirectoryName(webProject)!,
         webProject,
-        launchProfile: "http");
+        launchProfile: "http",
+        processJob);
     await WaitForHttpAsync(
         new Uri(dashboardUrl),
         web,
@@ -138,7 +141,8 @@ static ChildProcess StartChild(
     string label,
     string workingDirectory,
     string projectPath,
-    string? launchProfile)
+    string? launchProfile,
+    WindowsJobObject processJob)
 {
     var startInfo = new ProcessStartInfo
     {
@@ -192,6 +196,22 @@ static ChildProcess StartChild(
     {
         process.Dispose();
         throw new InvalidOperationException($"Could not start the {label} process.");
+    }
+
+    try
+    {
+        processJob.AddProcess(process);
+    }
+    catch
+    {
+        if (!process.HasExited)
+        {
+            process.Kill(entireProcessTree: true);
+        }
+
+        process.WaitForExit();
+        process.Dispose();
+        throw;
     }
 
     process.BeginOutputReadLine();
