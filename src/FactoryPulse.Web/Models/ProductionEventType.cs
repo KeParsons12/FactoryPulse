@@ -6,5 +6,7 @@ public enum ProductionEventType
     MachineStopped,
     FaultRaised,
     FaultCleared,
-    UnitCompleted
+    UnitCompleted,
+    MonitoringStarted,
+    MonitoringStopped
 }

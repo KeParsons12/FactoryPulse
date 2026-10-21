@@ -48,6 +48,8 @@ namespace FactoryPulse.Web.Data.Migrations
 
                     b.HasIndex("TimestampUtc", "Id");
 
+                    b.HasIndex("MachineId", "EventType", "TimestampUtc", "Id");
+
                     b.ToTable("ProductionEvents", (string)null);
                 });
 #pragma warning restore 612, 618

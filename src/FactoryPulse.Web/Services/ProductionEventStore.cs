@@ -144,6 +144,9 @@ public sealed class ProductionEventStore : IProductionEventStore, IHostedService
                 await _dbContextFactory.CreateDbContextAsync(cancellationToken);
             var storedEvents = await dbContext.ProductionEvents
                 .AsNoTracking()
+                .Where(machineEvent =>
+                    machineEvent.EventType != ProductionEventType.MonitoringStarted &&
+                    machineEvent.EventType != ProductionEventType.MonitoringStopped)
                 .OrderByDescending(machineEvent => machineEvent.TimestampUtc)
                 .ThenByDescending(machineEvent => machineEvent.Id)
                 .Take(count)

@@ -42,6 +42,11 @@ builder.Services.AddSingleton<IProductionEventStore>(services =>
     services.GetRequiredService<ProductionEventStore>());
 builder.Services.AddHostedService(services =>
     services.GetRequiredService<ProductionEventStore>());
+builder.Services.AddSingleton<MonitoringSession>();
+builder.Services.AddSingleton<MonitoringSessionService>();
+builder.Services.AddHostedService(services =>
+    services.GetRequiredService<MonitoringSessionService>());
+builder.Services.AddSingleton<IProductionAnalyticsService, ProductionAnalyticsService>();
 builder.Services.AddSingleton<MachineSimulator>();
 builder.Services.AddSingleton<IMachineSimulation>(services =>
     services.GetRequiredService<MachineSimulator>());

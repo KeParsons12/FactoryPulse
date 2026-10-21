@@ -29,6 +29,13 @@ public sealed class FactoryPulseDbContext(DbContextOptions<FactoryPulseDbContext
             machineEvent.TimestampUtc,
             machineEvent.Id
         });
+        productionEvent.HasIndex(machineEvent => new
+        {
+            machineEvent.MachineId,
+            machineEvent.EventType,
+            machineEvent.TimestampUtc,
+            machineEvent.Id
+        });
     }
 }
 

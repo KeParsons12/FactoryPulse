@@ -3,6 +3,7 @@
 @implements IAsyncDisposable
 @inject IMachineSimulation MachineSimulation
 @inject IProductionEventStore EventStore
+@inject IProductionAnalyticsService AnalyticsService
 
 <PageTitle>FactoryPulse | Live Dashboard</PageTitle>
 
@@ -126,6 +127,114 @@
         }
     </section>
 
+    <section class="analytics-panel" aria-labelledby="analytics-heading">
+        <div class="analytics-heading">
+            <div>
+                <p class="section-label">Persisted performance</p>
+                <h2 id="analytics-heading">Production and downtime analytics</h2>
+            </div>
+            <label class="period-selector">
+                <span>Time period</span>
+                <select @bind="selectedPeriod" @bind:after="RefreshAnalyticsAsync">
+                    <option value="@AnalyticsPeriod.LastHour">Last hour</option>
+                    <option value="@AnalyticsPeriod.Last24Hours">Last 24 hours</option>
+                    <option value="@AnalyticsPeriod.Last7Days">Last 7 days</option>
+                </select>
+            </label>
+        </div>
+
+        @if (analyticsError is not null)
+        {
+            <p class="analytics-notice" role="alert">@analyticsError</p>
+        }
+        else if (analytics is null)
+        {
+            <div class="empty-state"><p>Loading persisted analytics…</p></div>
+        }
+        else
+        {
+            <div class="analytics-kpi-grid">
+                <article class="analytics-kpi">
+                    <p>Total production</p>
+                    <strong>@analytics.TotalProduction.ToString("N0")</strong>
+                    <span>persisted units</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>Production rate</p>
+                    <strong>@analytics.ProductionRatePerHour.ToString("N1")</strong>
+                    <span>units / hour</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>Fault count</p>
+                    <strong>@analytics.FaultCount.ToString("N0")</strong>
+                    <span>faults raised</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>Fault downtime</p>
+                    <strong>@FormatDuration(analytics.TotalFaultDowntime)</strong>
+                    <span>overlap with period</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>Availability</p>
+                    <strong>@FormatPercentage(analytics.AvailabilityPercent)</strong>
+                    <span>@(analytics.AvailabilityUnavailableReason ?? "confirmed monitored period")</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>MTTR</p>
+                    <strong>@FormatNullableDuration(analytics.MeanTimeToRepair)</strong>
+                    <span>@(analytics.MeanTimeToRepairUnavailableReason ?? "mean repair time")</span>
+                </article>
+                <article class="analytics-kpi">
+                    <p>MTBF</p>
+                    <strong>@FormatNullableDuration(analytics.MeanTimeBetweenFailures)</strong>
+                    <span>@(analytics.MeanTimeBetweenFailuresUnavailableReason ?? "confirmed uptime / failures")</span>
+                </article>
+            </div>
+
+            @if (!analytics.HasCompleteMonitoringCoverage)
+            {
+                <p class="analytics-notice" role="note">
+                    Availability and MTBF are N/A because only
+                    @FormatDuration(analytics.ConfirmedMonitoringDuration) of this period has confirmed monitoring.
+                    Shutdown and unknown historical time is never counted as uptime.
+                </p>
+            }
+
+            <div class="analytics-detail-grid">
+                <article class="chart-card" aria-labelledby="production-chart-heading">
+                    <div class="chart-heading">
+                        <h3 id="production-chart-heading">Historical production</h3>
+                        <span>UTC buckets</span>
+                    </div>
+                    <div class="production-chart">
+                        @foreach (var bucket in analytics.ProductionBuckets)
+                        {
+                            <div class="chart-column"
+                                 title="@GetBucketTitle(bucket)">
+                                <span class="chart-value">@bucket.UnitCount</span>
+                                <div class="chart-bar-track">
+                                    <div class="chart-bar" style="height: @GetBarHeight(bucket.UnitCount)%"></div>
+                                </div>
+                                <time datetime="@bucket.StartUtc.ToString("O")">
+                                    @GetBucketLabel(bucket.StartUtc)
+                                </time>
+                            </div>
+                        }
+                    </div>
+                </article>
+                <article class="fault-summary" aria-labelledby="fault-summary-heading">
+                    <h3 id="fault-summary-heading">Fault and downtime summary</h3>
+                    <dl>
+                        <div><dt>Faults raised</dt><dd>@analytics.FaultCount</dd></div>
+                        <div><dt>Total downtime</dt><dd>@FormatDuration(analytics.TotalFaultDowntime)</dd></div>
+                        <div><dt>MTTR</dt><dd>@FormatNullableDuration(analytics.MeanTimeToRepair)</dd></div>
+                        <div><dt>Monitoring coverage</dt><dd>@FormatDuration(analytics.ConfirmedMonitoringDuration)</dd></div>
+                    </dl>
+                </article>
+            </div>
+        }
+    </section>
+
     <section class="events-panel" aria-labelledby="events-heading">
         <div class="events-heading">
             <div>
@@ -185,13 +294,18 @@
     private IReadOnlyList<ProductionEvent> recentEvents = [];
     private PersistenceHealthSnapshot persistenceHealth = new(
         PersistenceHealthStatus.Healthy, 0, 100, null);
+    private AnalyticsPeriod selectedPeriod = AnalyticsPeriod.LastHour;
+    private ProductionAnalyticsSnapshot? analytics;
+    private string? analyticsError;
     private PeriodicTimer? refreshTimer;
     private Task? refreshTask;
     private string? commandMessage;
+    private int refreshCount;
 
     protected override async Task OnInitializedAsync()
     {
         await RefreshSnapshotsAsync();
+        await RefreshAnalyticsAsync();
         refreshTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         refreshTask = RefreshDashboardAsync(refreshCancellation.Token);
     }
@@ -206,6 +320,11 @@
                 await InvokeAsync(async () =>
                 {
                     await RefreshSnapshotsAsync(cancellationToken);
+                    refreshCount++;
+                    if (refreshCount % 5 == 0)
+                    {
+                        await RefreshAnalyticsAsync();
+                    }
                     StateHasChanged();
                 });
             }
@@ -245,6 +364,7 @@
         }
 
         await RefreshSnapshotsAsync(refreshCancellation.Token);
+        await RefreshAnalyticsAsync();
         commandMessage = (accepted, persistenceFailed, PersistenceIsHealthy) switch
         {
             (true, false, true) => $"{commandName} command accepted and persisted.",
@@ -281,6 +401,29 @@
     private bool PersistenceIsHealthy =>
         persistenceHealth.Status == PersistenceHealthStatus.Healthy;
 
+    private async Task RefreshAnalyticsAsync()
+    {
+        if (persistenceHealth.Status == PersistenceHealthStatus.Unavailable)
+        {
+            return;
+        }
+
+        try
+        {
+            analytics = await AnalyticsService.GetAnalyticsAsync(
+                machine.MachineId,
+                selectedPeriod,
+                refreshCancellation.Token);
+            analyticsError = null;
+        }
+        catch (PersistenceUnavailableException exception)
+        {
+            analytics = null;
+            analyticsError = exception.Message;
+            persistenceHealth = EventStore.GetHealthSnapshot();
+        }
+    }
+
     private static string GetPersistenceHeading(PersistenceHealthStatus status) => status switch
     {
         PersistenceHealthStatus.Retrying => "Database write retry in progress",
@@ -296,6 +439,8 @@
         ProductionEventType.FaultRaised => "Fault raised",
         ProductionEventType.FaultCleared => "Fault cleared",
         ProductionEventType.UnitCompleted => "Unit completed",
+        ProductionEventType.MonitoringStarted => "Monitoring started",
+        ProductionEventType.MonitoringStopped => "Monitoring stopped",
         _ => eventType.ToString()
     };
 
@@ -306,6 +451,27 @@
 
     private static string FormatDuration(TimeSpan duration) =>
         $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
+
+    private static string FormatNullableDuration(TimeSpan? duration) =>
+        duration is { } value ? FormatDuration(value) : "N/A";
+
+    private static string FormatPercentage(double? percentage) =>
+        percentage is { } value ? $"{value:N1}%" : "N/A";
+
+    private double GetBarHeight(long count)
+    {
+        var maximum = analytics?.ProductionBuckets.Max(bucket => bucket.UnitCount) ?? 0;
+        return maximum == 0 ? 0 : Math.Max(3, 100d * count / maximum);
+    }
+
+    private string GetBucketLabel(DateTimeOffset start) => selectedPeriod switch
+    {
+        AnalyticsPeriod.Last7Days => start.ToString("MMM d HH:mm"),
+        _ => start.ToString("HH:mm")
+    };
+
+    private static string GetBucketTitle(ProductionBucket bucket) =>
+        $"{bucket.StartUtc:MMM d HH:mm}–{bucket.EndUtc:MMM d HH:mm} UTC: {bucket.UnitCount:N0} units";
 
     public async ValueTask DisposeAsync()
     {

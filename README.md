@@ -26,3 +26,17 @@ The queue is limited to 100 accepted events by default. If it fills, the trigger
 During graceful shutdown, FactoryPulse drains the accepted queue. An abrupt process termination or power loss can lose events that were queued but had not yet been committed. Already committed SQLite events remain available after restart.
 
 The queue capacity, retry count, and retry delay are configured under `FactoryPulse:EventPersistence` in `appsettings.json`.
+
+## Analytics methodology
+
+The dashboard calculates analytics directly from durably persisted SQLite events for the selected last hour, 24 hours, or 7 days. Time windows are half-open (`start <= timestamp < end`) and use UTC.
+
+- **Total production** is the count of persisted `UnitCompleted` events in the window.
+- **Production rate** is total production divided by the selected wall-clock hours.
+- **Fault count** is the number of `FaultRaised` events in the window.
+- **Total fault downtime** is the portion of every fault interval that overlaps the window. A fault raised before the window contributes only its in-window duration; an uncleared fault ends at the report time.
+- **Availability** is `(selected time - fault downtime) / selected time`. It is reported only when monitoring coverage spans the entire selected window.
+- **MTTR** is the average final duration of faults cleared in the window. It is N/A when none were cleared.
+- **MTBF** is confirmed non-fault time divided by faults raised in the window. It is N/A without complete monitoring coverage or when no failures occurred.
+
+FactoryPulse persists a unique monitoring-session start and a graceful-stop boundary. A session that has no stop boundary is trusted through the current process only. Time before the first boundary, between sessions, or after an interrupted prior session is unknown and is never treated as confirmed uptime. Historical production and fault totals remain available for those periods, while availability and MTBF display N/A with the reason. Monitoring-boundary events are internal analytics records and are intentionally omitted from the recent operator event table.
