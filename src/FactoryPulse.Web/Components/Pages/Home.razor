@@ -175,9 +175,9 @@
                     <span>overlap with period</span>
                 </article>
                 <article class="analytics-kpi">
-                    <p>Availability</p>
-                    <strong>@FormatPercentage(analytics.AvailabilityPercent)</strong>
-                    <span>@(analytics.AvailabilityUnavailableReason ?? "confirmed monitored period")</span>
+                    <p>Fault-free monitoring</p>
+                    <strong>@FormatPercentage(analytics.FaultFreeMonitoringPercent)</strong>
+                    <span>@(analytics.FaultFreeMonitoringUnavailableReason ?? "monitored time without an active fault")</span>
                 </article>
                 <article class="analytics-kpi">
                     <p>MTTR</p>
@@ -185,16 +185,16 @@
                     <span>@(analytics.MeanTimeToRepairUnavailableReason ?? "mean repair time")</span>
                 </article>
                 <article class="analytics-kpi">
-                    <p>MTBF</p>
-                    <strong>@FormatNullableDuration(analytics.MeanTimeBetweenFailures)</strong>
-                    <span>@(analytics.MeanTimeBetweenFailuresUnavailableReason ?? "confirmed uptime / failures")</span>
+                    <p>Fault-free time / fault</p>
+                    <strong>@FormatNullableDuration(analytics.MeanFaultFreeTimePerFault)</strong>
+                    <span>@(analytics.MeanFaultFreeTimePerFaultUnavailableReason ?? "fault-free monitored time / faults raised")</span>
                 </article>
             </div>
 
             @if (!analytics.HasCompleteMonitoringCoverage)
             {
                 <p class="analytics-notice" role="note">
-                    Availability and MTBF are N/A because only
+                    Fault-free monitoring percentage and fault-free time per fault are N/A because only
                     @FormatDuration(analytics.ConfirmedMonitoringDuration) of this period has confirmed monitoring.
                     Shutdown and unknown historical time is never counted as uptime.
                 </p>

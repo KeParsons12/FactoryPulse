@@ -31,12 +31,12 @@ The queue capacity, retry count, and retry delay are configured under `FactoryPu
 
 The dashboard calculates analytics directly from durably persisted SQLite events for the selected last hour, 24 hours, or 7 days. Time windows are half-open (`start <= timestamp < end`) and use UTC.
 
-- **Total production** is the count of persisted `UnitCompleted` events in the window.
+- **Total production** is an independent exact-range count of persisted `UnitCompleted` events in the window. Chart buckets use the same half-open UTC boundaries, run in the same database snapshot, and must sum to that total.
 - **Production rate** is total production divided by the selected wall-clock hours.
 - **Fault count** is the number of `FaultRaised` events in the window.
 - **Total fault downtime** is the portion of every fault interval that overlaps the window. A fault raised before the window contributes only its in-window duration; an uncleared fault ends at the report time.
-- **Availability** is `(selected time - fault downtime) / selected time`. It is reported only when monitoring coverage spans the entire selected window.
+- **Fault-free monitoring percentage** is `(selected monitored time - fault downtime) / selected monitored time`. It is reported only when monitoring coverage spans the entire selected window. This is not conventional manufacturing availability because FactoryPulse does not yet record planned-production time or Running time.
 - **MTTR** is the average final duration of faults cleared in the window. It is N/A when none were cleared.
-- **MTBF** is confirmed non-fault time divided by faults raised in the window. It is N/A without complete monitoring coverage or when no failures occurred.
+- **Mean fault-free monitored time per fault** is confirmed monitored time without an active fault divided by faults raised in the window. It is N/A without complete monitoring coverage or when no faults occurred. This is not conventional MTBF because Idle and Running time cannot yet be reconstructed reliably from the persisted events.
 
-FactoryPulse persists a unique monitoring-session start and a graceful-stop boundary. A session that has no stop boundary is trusted through the current process only. Time before the first boundary, between sessions, or after an interrupted prior session is unknown and is never treated as confirmed uptime. Historical production and fault totals remain available for those periods, while availability and MTBF display N/A with the reason. Monitoring-boundary events are internal analytics records and are intentionally omitted from the recent operator event table.
+FactoryPulse persists a unique monitoring-session start and a graceful-stop boundary. A session that has no stop boundary is trusted through the current process only. Time before the first boundary, between sessions, or after an interrupted prior session is unknown and is never treated as confirmed monitored time. Historical production and fault totals remain available for those periods, while fault-free monitoring metrics display N/A with the reason. Monitoring-boundary events are internal analytics records and are intentionally omitted from the recent operator event table.

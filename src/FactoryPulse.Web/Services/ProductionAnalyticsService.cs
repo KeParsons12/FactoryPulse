@@ -48,7 +48,19 @@ public sealed class ProductionAnalyticsService(
 
         await using var dbContext =
             await dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction =
+            await dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+        var periodStartUtc = periodStart.UtcDateTime;
+        var periodEndUtc = periodEnd.UtcDateTime;
+        var totalProduction = await dbContext.ProductionEvents
+            .AsNoTracking()
+            .CountAsync(machineEvent =>
+                machineEvent.MachineId == machineId &&
+                machineEvent.EventType == ProductionEventType.UnitCompleted &&
+                machineEvent.TimestampUtc >= periodStartUtc &&
+                machineEvent.TimestampUtc < periodEndUtc,
+                cancellationToken);
         var productionBuckets = await GetProductionBucketsAsync(
             dbContext,
             machineId,
@@ -56,7 +68,11 @@ public sealed class ProductionAnalyticsService(
             periodEnd,
             bucketCount,
             cancellationToken);
-        var totalProduction = productionBuckets.Sum(bucket => bucket.UnitCount);
+        if (productionBuckets.Sum(bucket => bucket.UnitCount) != totalProduction)
+        {
+            throw new InvalidOperationException(
+                "Production bucket counts did not match the exact-range production total.");
+        }
 
         var faultEvents = await GetBoundaryAwareEventsAsync(
             dbContext,
@@ -86,11 +102,11 @@ public sealed class ProductionAnalyticsService(
         var periodDuration = periodEnd - periodStart;
         var productionRate = totalProduction / periodDuration.TotalHours;
         var completeCoverage = monitoring.CoversEntirePeriod;
-        double? availability = completeCoverage
+        double? faultFreeMonitoringPercent = completeCoverage
             ? 100 * Math.Max(0, periodDuration.TotalSeconds - faultMetrics.Downtime.TotalSeconds) /
                 periodDuration.TotalSeconds
             : null;
-        var availabilityReason = completeCoverage
+        var faultFreeMonitoringReason = completeCoverage
             ? null
             : "N/A because the selected period includes time when monitoring was offline or its state is unknown.";
 
@@ -102,23 +118,23 @@ public sealed class ProductionAnalyticsService(
             ? "N/A because no fault was cleared during the selected period."
             : null;
 
-        TimeSpan? mtbf = null;
-        string? mtbfReason;
+        TimeSpan? meanFaultFreeTimePerFault = null;
+        string? meanFaultFreeTimeReason;
         if (!completeCoverage)
         {
-            mtbfReason =
+            meanFaultFreeTimeReason =
                 "N/A because the selected period includes time when monitoring was offline or its state is unknown.";
         }
         else if (faultMetrics.FaultCount == 0)
         {
-            mtbfReason = "N/A because no failures occurred during the selected period.";
+            meanFaultFreeTimeReason = "N/A because no faults occurred during the selected period.";
         }
         else
         {
             var confirmedUptime = periodDuration - faultMetrics.Downtime;
-            mtbf = TimeSpan.FromTicks(Math.Max(0, confirmedUptime.Ticks) /
+            meanFaultFreeTimePerFault = TimeSpan.FromTicks(Math.Max(0, confirmedUptime.Ticks) /
                 faultMetrics.FaultCount);
-            mtbfReason = null;
+            meanFaultFreeTimeReason = null;
         }
 
         return new ProductionAnalyticsSnapshot(
@@ -128,12 +144,12 @@ public sealed class ProductionAnalyticsService(
             productionRate,
             faultMetrics.FaultCount,
             faultMetrics.Downtime,
-            availability,
-            availabilityReason,
+            faultFreeMonitoringPercent,
+            faultFreeMonitoringReason,
             mttr,
             mttrReason,
-            mtbf,
-            mtbfReason,
+            meanFaultFreeTimePerFault,
+            meanFaultFreeTimeReason,
             monitoring.ConfirmedDuration,
             completeCoverage,
             productionBuckets);
@@ -148,30 +164,29 @@ public sealed class ProductionAnalyticsService(
         CancellationToken cancellationToken)
     {
         var bucketDuration = (periodEnd - periodStart) / bucketCount;
-        var startUtc = periodStart.UtcDateTime;
-        var endUtc = periodEnd.UtcDateTime;
-        var bucketSeconds = (long)bucketDuration.TotalSeconds;
-        var startUnixSeconds = periodStart.ToUnixTimeSeconds();
+        var buckets = new List<ProductionBucket>(bucketCount);
 
-        var rows = await dbContext.Database.SqlQuery<ProductionBucketCount>($$"""
-                SELECT CAST((unixepoch("TimestampUtc") - {{startUnixSeconds}}) / {{bucketSeconds}} AS INTEGER) AS "BucketIndex",
-                       COUNT(*) AS "UnitCount"
-                FROM "ProductionEvents"
-                WHERE "MachineId" = {{machineId}}
-                  AND "EventType" = 'UnitCompleted'
-                  AND "TimestampUtc" >= {{startUtc}}
-                  AND "TimestampUtc" < {{endUtc}}
-                GROUP BY CAST((unixepoch("TimestampUtc") - {{startUnixSeconds}}) / {{bucketSeconds}} AS INTEGER)
-                """)
-            .ToListAsync(cancellationToken);
-        var counts = rows.ToDictionary(row => row.BucketIndex, row => row.UnitCount);
+        for (var index = 0; index < bucketCount; index++)
+        {
+            var bucketStart = periodStart + bucketDuration * index;
+            var bucketEnd = index == bucketCount - 1
+                ? periodEnd
+                : periodStart + bucketDuration * (index + 1);
+            var bucketStartUtc = bucketStart.UtcDateTime;
+            var bucketEndUtc = bucketEnd.UtcDateTime;
+            var unitCount = await dbContext.ProductionEvents
+                .AsNoTracking()
+                .CountAsync(machineEvent =>
+                    machineEvent.MachineId == machineId &&
+                    machineEvent.EventType == ProductionEventType.UnitCompleted &&
+                    machineEvent.TimestampUtc >= bucketStartUtc &&
+                    machineEvent.TimestampUtc < bucketEndUtc,
+                    cancellationToken);
 
-        return Enumerable.Range(0, bucketCount)
-            .Select(index => new ProductionBucket(
-                periodStart + bucketDuration * index,
-                periodStart + bucketDuration * (index + 1),
-                counts.GetValueOrDefault(index)))
-            .ToArray();
+            buckets.Add(new ProductionBucket(bucketStart, bucketEnd, unitCount));
+        }
+
+        return buckets;
     }
 
     private static async Task<IReadOnlyList<ProductionEvent>> GetBoundaryAwareEventsAsync(
@@ -339,10 +354,4 @@ public sealed class ProductionAnalyticsService(
         TimeSpan ConfirmedDuration,
         bool CoversEntirePeriod);
 
-    private sealed class ProductionBucketCount
-    {
-        public long BucketIndex { get; set; }
-
-        public long UnitCount { get; set; }
-    }
 }

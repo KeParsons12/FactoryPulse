@@ -34,9 +34,36 @@ public sealed class ProductionAnalyticsServiceTests
         Assert.Equal(12, result.ProductionBuckets.Count);
         Assert.Equal(3, result.ProductionBuckets.Sum(bucket => bucket.UnitCount));
         Assert.True(result.HasCompleteMonitoringCoverage);
-        Assert.Equal(100, result.AvailabilityPercent);
-        Assert.Null(result.MeanTimeBetweenFailures);
-        Assert.Contains("no failures", result.MeanTimeBetweenFailuresUnavailableReason);
+        Assert.Equal(100, result.FaultFreeMonitoringPercent);
+        Assert.Null(result.MeanFaultFreeTimePerFault);
+        Assert.Contains("no faults", result.MeanFaultFreeTimePerFaultUnavailableReason);
+    }
+
+    [Fact]
+    public async Task FractionalSecondEventsUseExactHalfOpenBucketBoundaries()
+    {
+        using var database = new TemporaryDatabase();
+        var testContext = await CreateTestContextAsync(database.Path);
+        var firstBoundary = ReportTime.AddMinutes(-55);
+        await testContext.SeedAsync(
+            Event(ProductionEventType.UnitCompleted, firstBoundary.AddTicks(-1)),
+            Event(ProductionEventType.UnitCompleted, firstBoundary),
+            Event(ProductionEventType.UnitCompleted, firstBoundary.AddTicks(1)),
+            Event(ProductionEventType.UnitCompleted, ReportTime.AddTicks(-1)),
+            Event(ProductionEventType.UnitCompleted, ReportTime),
+            Event(ProductionEventType.UnitCompleted, ReportTime.AddTicks(1)));
+
+        var result = await testContext.Service.GetAnalyticsAsync(
+            MachineId,
+            AnalyticsPeriod.LastHour);
+
+        Assert.Equal(4, result.TotalProduction);
+        Assert.Equal(1, result.ProductionBuckets[0].UnitCount);
+        Assert.Equal(2, result.ProductionBuckets[1].UnitCount);
+        Assert.Equal(1, result.ProductionBuckets[^1].UnitCount);
+        Assert.Equal(
+            result.TotalProduction,
+            result.ProductionBuckets.Sum(bucket => bucket.UnitCount));
     }
 
     [Fact]
@@ -62,9 +89,9 @@ public sealed class ProductionAnalyticsServiceTests
 
         Assert.Equal(1, result.FaultCount);
         Assert.Equal(TimeSpan.FromMinutes(30), result.TotalFaultDowntime);
-        Assert.Equal(50, result.AvailabilityPercent);
+        Assert.Equal(50, result.FaultFreeMonitoringPercent);
         Assert.Equal(TimeSpan.FromMinutes(20), result.MeanTimeToRepair);
-        Assert.Equal(TimeSpan.FromMinutes(30), result.MeanTimeBetweenFailures);
+        Assert.Equal(TimeSpan.FromMinutes(30), result.MeanFaultFreeTimePerFault);
     }
 
     [Fact]
@@ -95,11 +122,11 @@ public sealed class ProductionAnalyticsServiceTests
         Assert.Equal(2, result.FaultCount);
         Assert.Equal(TimeSpan.FromMinutes(30), result.TotalFaultDowntime);
         Assert.Equal(TimeSpan.FromMinutes(15), result.MeanTimeToRepair);
-        Assert.Equal(TimeSpan.FromMinutes(15), result.MeanTimeBetweenFailures);
+        Assert.Equal(TimeSpan.FromMinutes(15), result.MeanFaultFreeTimePerFault);
     }
 
     [Fact]
-    public async Task RestartGapMakesAvailabilityAndMtbfUnavailable()
+    public async Task RestartGapMakesFaultFreeMonitoringMetricsUnavailable()
     {
         using var database = new TemporaryDatabase();
         var testContext = await CreateTestContextAsync(database.Path);
@@ -122,9 +149,9 @@ public sealed class ProductionAnalyticsServiceTests
 
         Assert.False(result.HasCompleteMonitoringCoverage);
         Assert.Equal(TimeSpan.FromMinutes(40), result.ConfirmedMonitoringDuration);
-        Assert.Null(result.AvailabilityPercent);
-        Assert.Contains("offline", result.AvailabilityUnavailableReason);
-        Assert.Null(result.MeanTimeBetweenFailures);
+        Assert.Null(result.FaultFreeMonitoringPercent);
+        Assert.Contains("offline", result.FaultFreeMonitoringUnavailableReason);
+        Assert.Null(result.MeanFaultFreeTimePerFault);
         Assert.NotNull(result.MeanTimeToRepair);
     }
 
@@ -146,7 +173,7 @@ public sealed class ProductionAnalyticsServiceTests
 
         Assert.Equal(TimeSpan.FromMinutes(10), result.ConfirmedMonitoringDuration);
         Assert.False(result.HasCompleteMonitoringCoverage);
-        Assert.Null(result.AvailabilityPercent);
+        Assert.Null(result.FaultFreeMonitoringPercent);
     }
 
     [Theory]
