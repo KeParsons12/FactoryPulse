@@ -1,6 +1,9 @@
 using FactoryPulse.Web.Components;
+using FactoryPulse.Web.Data;
 using FactoryPulse.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +24,22 @@ if (OperatingSystem.IsWindows())
 }
 
 builder.Services.AddSingleton(TimeProvider.System);
+var databasePath = GetDatabasePath(builder.Configuration, builder.Environment);
+Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+var sqliteConnectionString = new SqliteConnectionStringBuilder
+{
+    DataSource = databasePath,
+    Mode = SqliteOpenMode.ReadWriteCreate,
+    Cache = SqliteCacheMode.Shared
+}.ToString();
+
+builder.Services.AddDbContextFactory<FactoryPulseDbContext>(options =>
+    options.UseSqlite(sqliteConnectionString));
+builder.Services.AddSingleton<ProductionEventStore>();
+builder.Services.AddSingleton<IProductionEventStore>(services =>
+    services.GetRequiredService<ProductionEventStore>());
+builder.Services.AddHostedService(services =>
+    services.GetRequiredService<ProductionEventStore>());
 builder.Services.AddSingleton<MachineSimulator>();
 builder.Services.AddSingleton<IMachineSimulation>(services =>
     services.GetRequiredService<MachineSimulator>());
@@ -46,3 +65,19 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static string GetDatabasePath(IConfiguration configuration, IWebHostEnvironment environment)
+{
+    var configuredPath = configuration["FactoryPulse:DatabasePath"];
+
+    if (!string.IsNullOrWhiteSpace(configuredPath))
+    {
+        return Path.IsPathRooted(configuredPath)
+            ? Path.GetFullPath(configuredPath)
+            : Path.GetFullPath(configuredPath, environment.ContentRootPath);
+    }
+
+    var localApplicationData = Environment.GetFolderPath(
+        Environment.SpecialFolder.LocalApplicationData);
+    return Path.Combine(localApplicationData, "FactoryPulse", "factorypulse.db");
+}

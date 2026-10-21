@@ -4,6 +4,7 @@ namespace FactoryPulse.Web.Services;
 
 public sealed class MachineSimulator(
     TimeProvider timeProvider,
+    IProductionEventStore eventStore,
     ILogger<MachineSimulator> logger) : BackgroundService, IMachineSimulation
 {
     internal const int MaximumRecentEventCount = 20;
@@ -17,6 +18,7 @@ public sealed class MachineSimulator(
     private readonly Lock _stateLock = new();
     private readonly Queue<ProductionEvent> _recentEvents = new();
     private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly IProductionEventStore _eventStore = eventStore;
     private readonly ILogger<MachineSimulator> _logger = logger;
     private MachineState _currentState = MachineState.Running;
     private long _completedUnitCount;
@@ -185,12 +187,15 @@ public sealed class MachineSimulator(
         TimeSpan? duration = null,
         DateTimeOffset? timestamp = null)
     {
-        _recentEvents.Enqueue(new ProductionEvent(
+        var machineEvent = new ProductionEvent(
             MachineId,
             timestamp ?? _timeProvider.GetUtcNow(),
             eventType,
             details,
-            duration));
+            duration);
+
+        _recentEvents.Enqueue(machineEvent);
+        _eventStore.Enqueue(machineEvent);
 
         while (_recentEvents.Count > MaximumRecentEventCount)
         {

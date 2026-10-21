@@ -67,6 +67,12 @@ artifacts/
 .dotnet-home/
 .nuget/
 /src/FactoryPulse.Web/App_Data/DataProtectionKeys/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Tye
 .tye/

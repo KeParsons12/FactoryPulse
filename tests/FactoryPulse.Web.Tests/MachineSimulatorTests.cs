@@ -163,7 +163,24 @@ public sealed class MachineSimulatorTests
 
     private static MachineSimulator CreateSimulator(TimeProvider? timeProvider = null) =>
         new(timeProvider ?? new ManualTimeProvider(InitialTime),
+            new RecordingEventStore(),
             NullLogger<MachineSimulator>.Instance);
+
+    private sealed class RecordingEventStore : IProductionEventStore
+    {
+        public List<ProductionEvent> Events { get; } = [];
+
+        public void Enqueue(ProductionEvent machineEvent) => Events.Add(machineEvent);
+
+        public Task<IReadOnlyList<ProductionEvent>> GetRecentEventsAsync(
+            int count = 20,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ProductionEvent>>(
+                Events.TakeLast(count).Reverse<ProductionEvent>().ToArray());
+
+        public Task FlushAsync(CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
 
     private sealed class ManualTimeProvider(DateTimeOffset initialTime) : TimeProvider
     {

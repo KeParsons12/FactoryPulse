@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @implements IAsyncDisposable
 @inject IMachineSimulation MachineSimulation
+@inject IProductionEventStore EventStore
 
 <PageTitle>FactoryPulse | Live Dashboard</PageTitle>
 
@@ -44,6 +45,9 @@
                 <strong>@machine.RejectedUnitCount.ToString("N0")</strong>
             </article>
         </div>
+        <p class="session-note">
+            Production totals and machine state apply to this simulator session and reset when the app restarts.
+        </p>
 
         <div class="controls-panel" aria-labelledby="controls-heading">
             <div>
@@ -108,7 +112,7 @@
     <section class="events-panel" aria-labelledby="events-heading">
         <div class="events-heading">
             <div>
-                <p class="section-label">Live activity</p>
+                <p class="section-label">Persistent activity</p>
                 <h2 id="events-heading">Recent machine events</h2>
             </div>
             <span class="event-count">Latest 20</span>
@@ -166,9 +170,9 @@
     private Task? refreshTask;
     private string? commandMessage;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        RefreshSnapshots();
+        await RefreshSnapshotsAsync();
         refreshTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         refreshTask = RefreshDashboardAsync(refreshCancellation.Token);
     }
@@ -180,9 +184,9 @@
             while (refreshTimer is not null &&
                    await refreshTimer.WaitForNextTickAsync(cancellationToken))
             {
-                await InvokeAsync(() =>
+                await InvokeAsync(async () =>
                 {
-                    RefreshSnapshots();
+                    await RefreshSnapshotsAsync(cancellationToken);
                     StateHasChanged();
                 });
             }
@@ -193,31 +197,38 @@
         }
     }
 
-    private void StartMachine() =>
-        ExecuteCommand("Start", MachineSimulation.TryStart);
+    private Task StartMachine() =>
+        ExecuteCommandAsync("Start", MachineSimulation.TryStart);
 
-    private void StopMachine() =>
-        ExecuteCommand("Stop", MachineSimulation.TryStop);
+    private Task StopMachine() =>
+        ExecuteCommandAsync("Stop", MachineSimulation.TryStop);
 
-    private void InjectFault() =>
-        ExecuteCommand("Inject Fault", MachineSimulation.TryInjectFault);
+    private Task InjectFault() =>
+        ExecuteCommandAsync("Inject Fault", MachineSimulation.TryInjectFault);
 
-    private void ClearFault() =>
-        ExecuteCommand("Clear Fault", MachineSimulation.TryClearFault);
+    private Task ClearFault() =>
+        ExecuteCommandAsync("Clear Fault", MachineSimulation.TryClearFault);
 
-    private void ExecuteCommand(string commandName, Func<bool> command)
+    private async Task ExecuteCommandAsync(string commandName, Func<bool> command)
     {
         var accepted = command();
-        RefreshSnapshots();
+        if (accepted)
+        {
+            await EventStore.FlushAsync(refreshCancellation.Token);
+        }
+
+        await RefreshSnapshotsAsync(refreshCancellation.Token);
         commandMessage = accepted
             ? $"{commandName} command accepted."
             : $"{commandName} command rejected while the machine is {machine.CurrentState}.";
     }
 
-    private void RefreshSnapshots()
+    private async Task RefreshSnapshotsAsync(CancellationToken cancellationToken = default)
     {
         machine = MachineSimulation.GetMachineSnapshot();
-        recentEvents = MachineSimulation.GetRecentEvents();
+        recentEvents = await EventStore.GetRecentEventsAsync(
+            MachineSimulator.MaximumRecentEventCount,
+            cancellationToken);
     }
 
     private static string GetEventLabel(ProductionEventType eventType) => eventType switch

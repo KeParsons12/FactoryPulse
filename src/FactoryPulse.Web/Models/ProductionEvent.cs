@@ -5,4 +5,5 @@ public sealed record ProductionEvent(
     DateTimeOffset Timestamp,
     ProductionEventType EventType,
     string Details,
-    TimeSpan? Duration = null);
+    TimeSpan? Duration = null,
+    long EventId = 0);

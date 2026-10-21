@@ -171,6 +171,12 @@
     font-size: clamp(1.65rem, 4vw, 2.35rem);
 }
 
+.session-note {
+    margin: 0.85rem 0 0;
+    color: #7890a6;
+    font-size: 0.84rem;
+}
+
 .controls-panel {
     display: grid;
     grid-template-columns: minmax(11rem, .8fr) 2fr;
