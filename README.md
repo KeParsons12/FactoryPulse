@@ -12,6 +12,68 @@ dotnet run --project src/FactoryPulse.Web --launch-profile http
 
 The SQLite database is created automatically at `%LOCALAPPDATA%\FactoryPulse\factorypulse.db`. Set `FactoryPulse:DatabasePath` to override that location. Production totals reset on restart. An uncleared fault is reconstructed from persisted fault events; otherwise the simulator starts Idle.
 
+## External OPC UA telemetry
+
+Milestone 5 adds an independent console-based OPC UA machine simulator and a read-only client in the Blazor application. The external values are displayed in the **External OPC UA Telemetry** dashboard section. They do not change the original in-process simulator, its controls, persisted events, counters, or analytics.
+
+The implementation pins the official OPC Foundation .NET packages at version `2.0.1`. The client requires `Basic256Sha256` with `SignAndEncrypt`; an insecure fallback is not configured. Certificates use project-local PKI folders and are never automatically trusted.
+
+### Start both applications
+
+From the repository root, use two terminals:
+
+```powershell
+# Terminal 1: independent OPC UA server
+dotnet run --project src/FactoryPulse.OpcUa.Simulator
+```
+
+```powershell
+# Terminal 2: Blazor dashboard and OPC UA client
+dotnet run --project src/FactoryPulse.Web --launch-profile http
+```
+
+The simulator listens only on `opc.tcp://localhost:62560/FactoryPulse`. In its terminal, press `F` to raise `SIM-OPC-101`, `C` to clear the fault, or `Q` to stop gracefully. Its production counters and fault state are intentionally session-based.
+
+### First-run certificate trust
+
+The first connection is expected to fail because neither application trusts the other's self-signed application certificate. This is the safe default. Start both applications once, stop them, and inspect these rejected-certificate folders:
+
+```powershell
+Get-ChildItem .\pki\rejected\certs
+Get-ChildItem .\src\FactoryPulse.Web\App_Data\OpcUa\pki\rejected\certs
+```
+
+Verify the certificate subjects and thumbprints shown in the application logs. Trust only the two certificates created by this FactoryPulse run:
+
+- Move the rejected **FactoryPulse OPC UA Client** public `.der` file from `pki\rejected\certs` to `pki\trusted\certs`.
+- Move the rejected **FactoryPulse OPC UA Simulator** public `.der` file from `src\FactoryPulse.Web\App_Data\OpcUa\pki\rejected\certs` to `src\FactoryPulse.Web\App_Data\OpcUa\pki\trusted\certs`.
+
+For example, after replacing each placeholder with the exact verified filename:
+
+```powershell
+Move-Item -LiteralPath ".\pki\rejected\certs\<client-thumbprint>.der" -Destination ".\pki\trusted\certs\"
+Move-Item -LiteralPath ".\src\FactoryPulse.Web\App_Data\OpcUa\pki\rejected\certs\<server-thumbprint>.der" -Destination ".\src\FactoryPulse.Web\App_Data\OpcUa\pki\trusted\certs\"
+```
+
+Restart both applications. Do not move private-key files, trust unrelated rejected certificates, or install these development certificates in a Windows system trust store. All PKI folders are excluded from Git.
+
+### OPC UA address space
+
+The stable namespace URI is `urn:factorypulse:opcua:machine`. The server exposes a read-only `Machine01` object (`ns=<runtime index>;i=1000`) with these numeric identifiers:
+
+| Node | Identifier | OPC UA type |
+| --- | ---: | --- |
+| `Machine01.State` | `i=1001` | `String` |
+| `Machine01.GoodCount` | `i=1002` | `UInt32` |
+| `Machine01.RejectCount` | `i=1003` | `UInt32` |
+| `Machine01.TotalCount` | `i=1004` | `UInt32` |
+| `Machine01.FaultCode` | `i=1005` | `String` |
+| `Machine01.Heartbeat` | `i=1006` | `UInt32` |
+
+The namespace index is resolved at runtime rather than assumed. The client validates both OPC UA status quality and exact value type before updating its snapshot. It retains last-known values but marks them stale after five seconds without good data. Connection retry delays are bounded between one and fifteen seconds, while the managed session performs up to five reconnect attempts before the outer connection loop retries. These settings and the endpoint are configurable under `FactoryPulse:OpcUa` in `appsettings.json`.
+
+Current limitations: the OPC UA feed is read-only and local-only; it is not persisted or included in analytics. It represents a separate demo machine process, not the internal FactoryPulse simulator or physical equipment.
+
 ## Persistence reliability
 
 The simulator sends events to a bounded in-memory queue before the SQLite writer stores them. These states are deliberately different:

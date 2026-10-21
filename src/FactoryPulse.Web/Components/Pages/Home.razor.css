@@ -59,6 +59,7 @@
 }
 
 .machine-panel,
+.opcua-panel,
 .analytics-panel,
 .events-panel {
     border: 1px solid #273b4d;
@@ -339,6 +340,103 @@
     padding: clamp(1.25rem, 3vw, 2rem);
 }
 
+.opcua-panel {
+    margin-top: 1.25rem;
+    padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.opcua-heading,
+.opcua-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.opcua-heading h2 {
+    margin: 0;
+    color: #f2f6fa;
+    font-size: 1.35rem;
+}
+
+.opcua-endpoint {
+    margin: .35rem 0 0;
+    color: #7890a6;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: .78rem;
+}
+
+.connection-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .6rem .8rem;
+    border: 1px solid #536477;
+    border-radius: .45rem;
+    background: #24313d;
+    color: #b8c8d7;
+    font-size: .8rem;
+    font-weight: 700;
+}
+
+.connection-connected {
+    border-color: #2f8062;
+    background: #123126;
+    color: #79e5b4;
+}
+
+.connection-reconnecting,
+.connection-connecting {
+    border-color: #a87831;
+    background: #352817;
+    color: #f4c979;
+}
+
+.opcua-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: .75rem;
+    margin-top: 1.4rem;
+}
+
+.opcua-metric-grid article {
+    padding: .9rem;
+    border-left: 2px solid #587c9a;
+    border-radius: .35rem;
+    background: #192735;
+}
+
+.opcua-metric-grid span {
+    display: block;
+    color: #8fa6ba;
+    font-size: .7rem;
+}
+
+.opcua-metric-grid strong {
+    display: block;
+    overflow: hidden;
+    margin-top: .4rem;
+    color: #f2f6fa;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 1rem;
+    text-overflow: ellipsis;
+}
+
+.opcua-footer {
+    margin-top: 1rem;
+    color: #7890a6;
+    font-size: .75rem;
+}
+
+.opcua-warning {
+    margin: 1rem 0 0;
+    padding: .75rem .9rem;
+    border-left: 3px solid #c18b37;
+    background: #2f271a;
+    color: #f0d49e;
+    font-size: .8rem;
+}
+
 .analytics-heading,
 .chart-heading {
     display: flex;
@@ -602,6 +700,10 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .opcua-metric-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .analytics-detail-grid {
         grid-template-columns: 1fr;
     }
@@ -613,6 +715,12 @@
     .fault-panel,
     .persistence-alert,
     .analytics-heading {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .opcua-heading,
+    .opcua-footer {
         align-items: flex-start;
         flex-direction: column;
     }
@@ -644,5 +752,9 @@
     .period-selector {
         width: 100%;
         justify-content: space-between;
+    }
+
+    .opcua-metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

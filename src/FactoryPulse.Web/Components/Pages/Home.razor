@@ -4,6 +4,7 @@
 @inject IMachineSimulation MachineSimulation
 @inject IProductionEventStore EventStore
 @inject IProductionAnalyticsService AnalyticsService
+@inject IOpcUaTelemetry OpcUaTelemetry
 
 <PageTitle>FactoryPulse | Live Dashboard</PageTitle>
 
@@ -124,6 +125,49 @@
                     <strong>@FormatDuration(machine.ActiveFault.ElapsedDuration)</strong>
                 </div>
             </aside>
+        }
+    </section>
+
+    <section class="opcua-panel" aria-labelledby="opcua-heading">
+        <div class="opcua-heading">
+            <div>
+                <p class="section-label">Separate simulated server</p>
+                <h2 id="opcua-heading">External OPC UA Telemetry</h2>
+                <p class="opcua-endpoint">@externalTelemetry.Endpoint</p>
+            </div>
+            <div class="connection-pill connection-@externalTelemetry.ConnectionState.ToString().ToLowerInvariant()">
+                <span class="status-indicator" aria-hidden="true"></span>
+                @externalTelemetry.ConnectionState
+            </div>
+        </div>
+
+        <div class="opcua-metric-grid">
+            <article><span>Machine status</span><strong>@(externalTelemetry.MachineState ?? "—")</strong></article>
+            <article><span>Good units</span><strong>@FormatOptionalCount(externalTelemetry.GoodCount)</strong></article>
+            <article><span>Rejected units</span><strong>@FormatOptionalCount(externalTelemetry.RejectCount)</strong></article>
+            <article><span>Total units</span><strong>@FormatOptionalCount(externalTelemetry.TotalCount)</strong></article>
+            <article><span>Active fault</span><strong>@GetExternalFaultCode()</strong></article>
+            <article><span>Heartbeat</span><strong>@FormatOptionalCount(externalTelemetry.Heartbeat)</strong></article>
+        </div>
+
+        <div class="opcua-footer">
+            <span>
+                Last good data:
+                @if (externalTelemetry.LastGoodDataTimestamp is { } lastGood)
+                {
+                    <time datetime="@lastGood.ToString("O")">@lastGood.ToLocalTime().ToString("MMM d, yyyy · HH:mm:ss")</time>
+                }
+                else
+                {
+                    <strong>Never</strong>
+                }
+            </span>
+            <span>Read-only · Not included in internal production totals</span>
+        </div>
+
+        @if (externalTelemetry.Warning is not null)
+        {
+            <p class="opcua-warning" role="alert">@externalTelemetry.Warning</p>
         }
     </section>
 
@@ -296,6 +340,13 @@
         PersistenceHealthStatus.Healthy, 0, 100, null);
     private AnalyticsPeriod selectedPeriod = AnalyticsPeriod.LastHour;
     private ProductionAnalyticsSnapshot? analytics;
+    private OpcUaTelemetrySnapshot externalTelemetry = new(
+        OpcUaConnectionState.Disconnected,
+        "opc.tcp://localhost:62560/FactoryPulse",
+        null, null, null, null, null, null, null,
+        IsStale: true,
+        HasValidData: false,
+        Warning: "No valid OPC UA telemetry has been received.");
     private string? analyticsError;
     private PeriodicTimer? refreshTimer;
     private Task? refreshTask;
@@ -379,6 +430,7 @@
     private async Task RefreshSnapshotsAsync(CancellationToken cancellationToken = default)
     {
         machine = MachineSimulation.GetMachineSnapshot();
+        externalTelemetry = OpcUaTelemetry.GetSnapshot();
         persistenceHealth = EventStore.GetHealthSnapshot();
 
         if (persistenceHealth.Status == PersistenceHealthStatus.Unavailable)
@@ -457,6 +509,14 @@
 
     private static string FormatPercentage(double? percentage) =>
         percentage is { } value ? $"{value:N1}%" : "N/A";
+
+    private static string FormatOptionalCount(uint? count) =>
+        count is { } value ? value.ToString("N0") : "—";
+
+    private string GetExternalFaultCode() =>
+        string.IsNullOrWhiteSpace(externalTelemetry.FaultCode)
+            ? "None"
+            : externalTelemetry.FaultCode;
 
     private double GetBarHeight(long count)
     {

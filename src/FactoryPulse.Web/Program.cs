@@ -4,6 +4,9 @@ using FactoryPulse.Web.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Opc.Ua;
+using Opc.Ua.Client;
+using FactoryPulseOpcUaOptions = FactoryPulse.Web.Services.OpcUaClientOptions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +27,43 @@ if (OperatingSystem.IsWindows())
 }
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.Configure<FactoryPulseOpcUaOptions>(
+    builder.Configuration.GetSection(FactoryPulseOpcUaOptions.ConfigurationSection));
+var opcUaConfiguration = builder.Configuration
+    .GetSection(FactoryPulseOpcUaOptions.ConfigurationSection)
+    .Get<FactoryPulseOpcUaOptions>() ?? new FactoryPulseOpcUaOptions();
+builder.Services.AddSingleton<OpcUaTelemetryStore>();
+builder.Services.AddSingleton<IOpcUaTelemetry>(services =>
+    services.GetRequiredService<OpcUaTelemetryStore>());
+builder.Services.AddSingleton<OpcUaTelemetryService>();
+builder.Services.AddHostedService(services =>
+    services.GetRequiredService<OpcUaTelemetryService>());
+builder.Services
+    .AddOpcUa()
+    .AddClient(options =>
+    {
+        options.ApplicationName = "FactoryPulse OPC UA Client";
+        options.ApplicationUri = "urn:localhost:FactoryPulse:OpcUa:Client";
+        options.ProductUri = "urn:factorypulse:opcua:client";
+        options.PkiRoot = Path.Combine(
+            builder.Environment.ContentRootPath,
+            "App_Data",
+            "OpcUa",
+            "pki");
+        options.Session = new ManagedSessionOptions
+        {
+            ReconnectPolicy = new ReconnectPolicyOptions
+            {
+                MaxRetries = opcUaConfiguration.MaximumSessionReconnectAttempts
+            }
+        };
+    })
+    .AddDiscoveryAndConnect(options =>
+    {
+        options.DiscoveryUrl = opcUaConfiguration.Endpoint;
+        options.SecurityMode = MessageSecurityMode.SignAndEncrypt;
+        options.SecurityPolicyUri = SecurityPolicies.Basic256Sha256;
+    });
 var databasePath = GetDatabasePath(builder.Configuration, builder.Environment);
 Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
 var sqliteConnectionString = new SqliteConnectionStringBuilder
