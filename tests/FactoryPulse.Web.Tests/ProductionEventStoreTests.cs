@@ -144,6 +144,62 @@ public sealed class ProductionEventStoreTests
         await store.StopAsync(CancellationToken.None);
     }
 
+    [Fact]
+    public async Task UnclearedFaultIsRestoredAfterApplicationRestart()
+    {
+        using var database = new TemporaryDatabase();
+        var firstStore = CreateStore(database.Path);
+        await firstStore.StartAsync(CancellationToken.None);
+        using (var firstSimulator = new MachineSimulator(
+                   new ManualTimeProvider(InitialTime),
+                   firstStore,
+                   NullLogger<MachineSimulator>.Instance))
+        {
+            Assert.True(firstSimulator.TryInjectFault());
+            await firstStore.FlushAsync();
+        }
+
+        await firstStore.StopAsync(CancellationToken.None);
+
+        var restartTime = InitialTime.AddMinutes(5);
+        var restartedStore = CreateStore(database.Path);
+        await restartedStore.StartAsync(CancellationToken.None);
+        using (var restartedSimulator = new MachineSimulator(
+                   new ManualTimeProvider(restartTime),
+                   restartedStore,
+                   NullLogger<MachineSimulator>.Instance))
+        {
+            await restartedSimulator.StartAsync(CancellationToken.None);
+
+            var restoredSnapshot = restartedSimulator.GetMachineSnapshot();
+            Assert.Equal(MachineState.Faulted, restoredSnapshot.CurrentState);
+            Assert.Equal(InitialTime, restoredSnapshot.ActiveFault?.StartedAtUtc);
+            Assert.Equal(TimeSpan.FromMinutes(5), restoredSnapshot.ActiveFault?.ElapsedDuration);
+            Assert.False(restartedSimulator.SimulateProductionCycle());
+            Assert.True(restartedSimulator.TryClearFault());
+            Assert.Equal(MachineState.Idle, restartedSimulator.GetMachineSnapshot().CurrentState);
+            await restartedStore.FlushAsync();
+            await restartedSimulator.StopAsync(CancellationToken.None);
+        }
+
+        await restartedStore.StopAsync(CancellationToken.None);
+
+        var clearedStore = CreateStore(database.Path);
+        await clearedStore.StartAsync(CancellationToken.None);
+        using (var clearedSimulator = new MachineSimulator(
+                   new ManualTimeProvider(restartTime),
+                   clearedStore,
+                   NullLogger<MachineSimulator>.Instance))
+        {
+            await clearedSimulator.StartAsync(CancellationToken.None);
+            Assert.Equal(MachineState.Idle, clearedSimulator.GetMachineSnapshot().CurrentState);
+            Assert.Null(clearedSimulator.GetMachineSnapshot().ActiveFault);
+            await clearedSimulator.StopAsync(CancellationToken.None);
+        }
+
+        await clearedStore.StopAsync(CancellationToken.None);
+    }
+
     private static ProductionEvent CreateEvent(
         ProductionEventType eventType,
         DateTimeOffset timestamp) =>

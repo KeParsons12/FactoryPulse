@@ -188,6 +188,17 @@ public sealed class MachineSimulatorTests
             Task.FromResult<IReadOnlyList<ProductionEvent>>(
                 Events.TakeLast(count).Reverse<ProductionEvent>().ToArray());
 
+        public Task<ProductionEvent?> GetLatestFaultEventAsync(
+            string machineId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Events
+                .Where(machineEvent =>
+                    machineEvent.MachineId == machineId &&
+                    machineEvent.EventType is ProductionEventType.FaultRaised or
+                        ProductionEventType.FaultCleared)
+                .OrderByDescending(machineEvent => machineEvent.Timestamp)
+                .FirstOrDefault());
+
         public Task FlushAsync(CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
     }

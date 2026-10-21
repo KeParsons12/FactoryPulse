@@ -10,5 +10,9 @@ public interface IProductionEventStore
         int count = 20,
         CancellationToken cancellationToken = default);
 
+    Task<ProductionEvent?> GetLatestFaultEventAsync(
+        string machineId,
+        CancellationToken cancellationToken = default);
+
     Task FlushAsync(CancellationToken cancellationToken = default);
 }

@@ -143,6 +143,12 @@ public sealed class MachineSimulator(
         }
     }
 
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await RestorePersistentStateAsync(cancellationToken);
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Machine 01 simulation started.");
@@ -179,6 +185,33 @@ public sealed class MachineSimulator(
                 "Good unit completed");
             return true;
         }
+    }
+
+    internal async Task RestorePersistentStateAsync(CancellationToken cancellationToken = default)
+    {
+        var latestFaultEvent = await _eventStore.GetLatestFaultEventAsync(
+            MachineId,
+            cancellationToken);
+
+        if (latestFaultEvent?.EventType != ProductionEventType.FaultRaised)
+        {
+            return;
+        }
+
+        lock (_stateLock)
+        {
+            _activeFault = new ActiveFault(
+                SimulatedFaultCode,
+                SimulatedFaultDescription,
+                latestFaultEvent.Timestamp);
+            _currentState = MachineState.Faulted;
+        }
+
+        _logger.LogWarning(
+            "Restored uncleared fault {FaultCode} for {MachineId}, raised at {StartedAtUtc}.",
+            SimulatedFaultCode,
+            MachineId,
+            latestFaultEvent.Timestamp);
     }
 
     private void AddEventLocked(

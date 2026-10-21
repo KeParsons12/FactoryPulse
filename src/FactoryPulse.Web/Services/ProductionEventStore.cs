@@ -60,6 +60,26 @@ public sealed class ProductionEventStore(
         return storedEvents.Select(machineEvent => machineEvent.ToModel()).ToArray();
     }
 
+    public async Task<ProductionEvent?> GetLatestFaultEventAsync(
+        string machineId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(machineId);
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var storedEvent = await dbContext.ProductionEvents
+            .AsNoTracking()
+            .Where(machineEvent =>
+                machineEvent.MachineId == machineId &&
+                (machineEvent.EventType == ProductionEventType.FaultRaised ||
+                 machineEvent.EventType == ProductionEventType.FaultCleared))
+            .OrderByDescending(machineEvent => machineEvent.TimestampUtc)
+            .ThenByDescending(machineEvent => machineEvent.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return storedEvent?.ToModel();
+    }
+
     public async Task FlushAsync(CancellationToken cancellationToken = default)
     {
         var completion = new TaskCompletionSource(
