@@ -9,14 +9,14 @@ public sealed class ConsoleControlService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (Console.IsInputRedirected)
-        {
-            return;
-        }
-
         while (!stoppingToken.IsCancellationRequested)
         {
             var input = await Console.In.ReadLineAsync(stoppingToken);
+            if (input is null)
+            {
+                return;
+            }
+
             switch (input?.Trim().ToUpperInvariant())
             {
                 case "F":

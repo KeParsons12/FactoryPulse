@@ -27,6 +27,7 @@ if (OperatingSystem.IsWindows())
 }
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<DemoConsoleShutdownService>();
 builder.Services.Configure<FactoryPulseOpcUaOptions>(
     builder.Configuration.GetSection(FactoryPulseOpcUaOptions.ConfigurationSection));
 var opcUaConfiguration = builder.Configuration

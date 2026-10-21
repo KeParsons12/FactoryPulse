@@ -4,13 +4,38 @@ FactoryPulse is a small .NET 10 Blazor manufacturing simulator for a single mach
 
 ## Local operation
 
-Run the HTTP development profile:
+From the repository root, start the complete demonstration with one command:
+
+```powershell
+.\start-demo.ps1
+```
+
+The script builds the solution, starts the OPC UA simulator, waits for its endpoint, starts the web application with the HTTP development profile, and waits for the dashboard to respond. Open [http://localhost:5153](http://localhost:5153).
+
+Use the same terminal for the external simulator controls:
+
+- `F` injects fault `SIM-OPC-101`.
+- `C` clears the external fault.
+- `Q` gracefully stops both applications.
+- `Ctrl+C` also stops both applications.
+
+The launcher prefixes child output with `[OPC]` or `[WEB]`. If either application exits unexpectedly, it reports the failure and stops the remaining application. Graceful web shutdown follows the normal hosted-service path so accepted SQLite events can be flushed. A child that does not stop within 15 seconds is terminated by its specific owned process tree; unrelated `dotnet` processes are never targeted.
+
+The SQLite database is created automatically at `%LOCALAPPDATA%\FactoryPulse\factorypulse.db`. Set `FactoryPulse:DatabasePath` to override that location. Production totals reset on restart. An uncleared fault is reconstructed from persisted fault events; otherwise the internal simulator starts Idle.
+
+### Start applications individually
+
+For debugging, start the two applications in separate terminals. Run the OPC UA simulator from the repository root so it uses the same project-local certificate location as the launcher:
+
+```powershell
+dotnet run --project src/FactoryPulse.OpcUa.Simulator
+```
+
+Run the web application with its HTTP development profile:
 
 ```powershell
 dotnet run --project src/FactoryPulse.Web --launch-profile http
 ```
-
-The SQLite database is created automatically at `%LOCALAPPDATA%\FactoryPulse\factorypulse.db`. Set `FactoryPulse:DatabasePath` to override that location. Production totals reset on restart. An uncleared fault is reconstructed from persisted fault events; otherwise the simulator starts Idle.
 
 ## External OPC UA telemetry
 
@@ -18,25 +43,11 @@ Milestone 5 adds an independent console-based OPC UA machine simulator and a rea
 
 The implementation pins the official OPC Foundation .NET packages at version `2.0.1`. The client requires `Basic256Sha256` with `SignAndEncrypt`; an insecure fallback is not configured. Certificates use project-local PKI folders and are never automatically trusted.
 
-### Start both applications
-
-From the repository root, use two terminals:
-
-```powershell
-# Terminal 1: independent OPC UA server
-dotnet run --project src/FactoryPulse.OpcUa.Simulator
-```
-
-```powershell
-# Terminal 2: Blazor dashboard and OPC UA client
-dotnet run --project src/FactoryPulse.Web --launch-profile http
-```
-
-The simulator listens only on `opc.tcp://localhost:62560/FactoryPulse`. In its terminal, press `F` to raise `SIM-OPC-101`, `C` to clear the fault, or `Q` to stop gracefully. Its production counters and fault state are intentionally session-based.
+The simulator listens only on `opc.tcp://localhost:62560/FactoryPulse`. When running it individually, enter `F`, `C`, or `Q` followed by Enter. Its production counters and fault state are intentionally session-based.
 
 ### First-run certificate trust
 
-The first connection is expected to fail because neither application trusts the other's self-signed application certificate. This is the safe default. Start both applications once, stop them, and inspect these rejected-certificate folders:
+The first connection is expected to fail because neither application trusts the other's self-signed application certificate. This is the safe default. Run `.\start-demo.ps1` once, stop it with `Q`, and inspect these rejected-certificate folders:
 
 ```powershell
 Get-ChildItem .\pki\rejected\certs
