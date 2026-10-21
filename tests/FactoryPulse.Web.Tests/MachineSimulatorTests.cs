@@ -10,7 +10,7 @@ public sealed class MachineSimulatorTests
         new(2026, 10, 21, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public void NewSimulatorStartsMachineRunningWithZeroCountsAndNoFault()
+    public void NewSimulatorStartsMachineIdleWithZeroCountsAndNoFault()
     {
         using var simulator = CreateSimulator();
 
@@ -18,7 +18,7 @@ public sealed class MachineSimulatorTests
 
         Assert.Equal("machine-01", snapshot.MachineId);
         Assert.Equal("Machine 01", snapshot.MachineName);
-        Assert.Equal(MachineState.Running, snapshot.CurrentState);
+        Assert.Equal(MachineState.Idle, snapshot.CurrentState);
         Assert.Equal(0, snapshot.CompletedUnitCount);
         Assert.Equal(0, snapshot.GoodUnitCount);
         Assert.Equal(0, snapshot.RejectedUnitCount);
@@ -30,6 +30,9 @@ public sealed class MachineSimulatorTests
     public void ValidCommandsApplyRequiredStateTransitionsAndEvents()
     {
         using var simulator = CreateSimulator();
+
+        Assert.True(simulator.TryStart());
+        Assert.Equal(MachineState.Running, simulator.GetMachineSnapshot().CurrentState);
 
         Assert.True(simulator.TryStop());
         Assert.Equal(MachineState.Idle, simulator.GetMachineSnapshot().CurrentState);
@@ -52,7 +55,8 @@ public sealed class MachineSimulatorTests
                 ProductionEventType.FaultCleared,
                 ProductionEventType.FaultRaised,
                 ProductionEventType.MachineStarted,
-                ProductionEventType.MachineStopped
+                ProductionEventType.MachineStopped,
+                ProductionEventType.MachineStarted
             ],
             simulator.GetRecentEvents().Select(machineEvent => machineEvent.EventType));
     }
@@ -62,10 +66,12 @@ public sealed class MachineSimulatorTests
     {
         using var simulator = CreateSimulator();
 
-        Assert.False(simulator.TryStart());
+        Assert.False(simulator.TryStop());
         Assert.False(simulator.TryClearFault());
         Assert.Empty(simulator.GetRecentEvents());
 
+        Assert.True(simulator.TryStart());
+        Assert.False(simulator.TryStart());
         Assert.True(simulator.TryStop());
         Assert.False(simulator.TryStop());
         Assert.True(simulator.TryInjectFault());
@@ -74,7 +80,7 @@ public sealed class MachineSimulatorTests
         Assert.False(simulator.TryStop());
 
         Assert.Equal(MachineState.Faulted, simulator.GetMachineSnapshot().CurrentState);
-        Assert.Equal(2, simulator.GetRecentEvents().Count);
+        Assert.Equal(3, simulator.GetRecentEvents().Count);
     }
 
     [Fact]
@@ -82,6 +88,8 @@ public sealed class MachineSimulatorTests
     {
         using var simulator = CreateSimulator();
 
+        Assert.False(simulator.SimulateProductionCycle());
+        Assert.True(simulator.TryStart());
         Assert.True(simulator.SimulateProductionCycle());
 
         Assert.True(simulator.TryStop());
@@ -146,6 +154,8 @@ public sealed class MachineSimulatorTests
     public void RecentEventsRetainOnlyTheLatestTwentyEntries()
     {
         using var simulator = CreateSimulator();
+
+        Assert.True(simulator.TryStart());
 
         for (var cycle = 0; cycle < MachineSimulator.MaximumRecentEventCount + 5; cycle++)
         {

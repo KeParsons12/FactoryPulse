@@ -118,6 +118,7 @@ public sealed class ProductionEventStoreTests
             store,
             NullLogger<MachineSimulator>.Instance);
 
+        Assert.True(simulator.TryStart());
         Assert.True(simulator.SimulateProductionCycle());
         Assert.True(simulator.TryStop());
         Assert.True(simulator.TryStart());
@@ -127,7 +128,7 @@ public sealed class ProductionEventStoreTests
         await store.FlushAsync();
 
         var storedEvents = await store.GetRecentEventsAsync();
-        Assert.Equal(5, storedEvents.Count);
+        Assert.Equal(6, storedEvents.Count);
         Assert.Contains(storedEvents, machineEvent =>
             machineEvent.EventType == ProductionEventType.UnitCompleted);
         Assert.Contains(storedEvents, machineEvent =>

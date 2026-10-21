@@ -20,7 +20,7 @@ public sealed class MachineSimulator(
     private readonly TimeProvider _timeProvider = timeProvider;
     private readonly IProductionEventStore _eventStore = eventStore;
     private readonly ILogger<MachineSimulator> _logger = logger;
-    private MachineState _currentState = MachineState.Running;
+    private MachineState _currentState = MachineState.Idle;
     private long _completedUnitCount;
     private long _goodUnitCount;
     private ActiveFault? _activeFault;

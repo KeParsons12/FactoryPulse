@@ -164,7 +164,7 @@
 @code {
     private readonly CancellationTokenSource refreshCancellation = new();
     private MachineSnapshot machine = new(
-        "machine-01", "Machine 01", MachineState.Running, 0, 0, 0, null);
+        "machine-01", "Machine 01", MachineState.Idle, 0, 0, 0, null);
     private IReadOnlyList<ProductionEvent> recentEvents = [];
     private PeriodicTimer? refreshTimer;
     private Task? refreshTask;
