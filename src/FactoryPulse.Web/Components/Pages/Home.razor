@@ -44,13 +44,72 @@
                 <strong>@machine.RejectedUnitCount.ToString("N0")</strong>
             </article>
         </div>
+
+        <div class="controls-panel" aria-labelledby="controls-heading">
+            <div>
+                <p class="section-label">Simulated controls</p>
+                <h3 id="controls-heading">Operator commands</h3>
+            </div>
+            <div class="control-buttons">
+                <button type="button"
+                        class="control-button start-button"
+                        disabled="@(machine.CurrentState != MachineState.Idle)"
+                        @onclick="StartMachine">
+                    Start
+                </button>
+                <button type="button"
+                        class="control-button"
+                        disabled="@(machine.CurrentState != MachineState.Running)"
+                        @onclick="StopMachine">
+                    Stop
+                </button>
+                <button type="button"
+                        class="control-button fault-button"
+                        disabled="@(machine.CurrentState is not (MachineState.Running or MachineState.Idle))"
+                        @onclick="InjectFault">
+                    Inject Fault
+                </button>
+                <button type="button"
+                        class="control-button clear-button"
+                        disabled="@(machine.CurrentState != MachineState.Faulted)"
+                        @onclick="ClearFault">
+                    Clear Fault
+                </button>
+            </div>
+            @if (commandMessage is not null)
+            {
+                <p class="command-message" role="status">@commandMessage</p>
+            }
+        </div>
+
+        @if (machine.ActiveFault is not null)
+        {
+            <aside class="fault-panel" aria-labelledby="active-fault-heading">
+                <div>
+                    <p class="section-label fault-label">Active fault</p>
+                    <h3 id="active-fault-heading">
+                        @machine.ActiveFault.Code — @machine.ActiveFault.Description
+                    </h3>
+                    <p>
+                        Raised
+                        <time datetime="@machine.ActiveFault.StartedAtUtc.ToString("O")">
+                            @machine.ActiveFault.StartedAtUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")
+                        </time>
+                    </p>
+                </div>
+                <div class="downtime-value">
+                    <span>Fault downtime</span>
+                    <strong>@FormatDuration(machine.ActiveFault.ElapsedDuration)</strong>
+                </div>
+            </aside>
+        }
     </section>
 
     <section class="events-panel" aria-labelledby="events-heading">
         <div class="events-heading">
             <div>
                 <p class="section-label">Live activity</p>
-                <h2 id="events-heading">Recent production events</h2>
+                <h2 id="events-heading">Recent machine events</h2>
             </div>
             <span class="event-count">Latest 20</span>
         </div>
@@ -58,7 +117,7 @@
         @if (recentEvents.Count == 0)
         {
             <div class="empty-state">
-                <p>Waiting for the first completed unit…</p>
+                <p>Waiting for the first machine event…</p>
             </div>
         }
         else
@@ -70,6 +129,7 @@
                             <th>Time</th>
                             <th>Machine</th>
                             <th>Event</th>
+                            <th>Details</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -82,7 +142,12 @@
                                     </time>
                                 </td>
                                 <td>@productionEvent.MachineId</td>
-                                <td><span class="event-type">Unit completed</span></td>
+                                <td>
+                                    <span class="event-type event-@productionEvent.EventType.ToString().ToLowerInvariant()">
+                                        @GetEventLabel(productionEvent.EventType)
+                                    </span>
+                                </td>
+                                <td>@GetEventDetails(productionEvent)</td>
                             </tr>
                         }
                     </tbody>
@@ -95,10 +160,11 @@
 @code {
     private readonly CancellationTokenSource refreshCancellation = new();
     private MachineSnapshot machine = new(
-        "machine-01", "Machine 01", MachineState.Running, 0, 0, 0);
+        "machine-01", "Machine 01", MachineState.Running, 0, 0, 0, null);
     private IReadOnlyList<ProductionEvent> recentEvents = [];
     private PeriodicTimer? refreshTimer;
     private Task? refreshTask;
+    private string? commandMessage;
 
     protected override void OnInitialized()
     {
@@ -114,8 +180,11 @@
             while (refreshTimer is not null &&
                    await refreshTimer.WaitForNextTickAsync(cancellationToken))
             {
-                RefreshSnapshots();
-                await InvokeAsync(StateHasChanged);
+                await InvokeAsync(() =>
+                {
+                    RefreshSnapshots();
+                    StateHasChanged();
+                });
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -124,11 +193,50 @@
         }
     }
 
+    private void StartMachine() =>
+        ExecuteCommand("Start", MachineSimulation.TryStart);
+
+    private void StopMachine() =>
+        ExecuteCommand("Stop", MachineSimulation.TryStop);
+
+    private void InjectFault() =>
+        ExecuteCommand("Inject Fault", MachineSimulation.TryInjectFault);
+
+    private void ClearFault() =>
+        ExecuteCommand("Clear Fault", MachineSimulation.TryClearFault);
+
+    private void ExecuteCommand(string commandName, Func<bool> command)
+    {
+        var accepted = command();
+        RefreshSnapshots();
+        commandMessage = accepted
+            ? $"{commandName} command accepted."
+            : $"{commandName} command rejected while the machine is {machine.CurrentState}.";
+    }
+
     private void RefreshSnapshots()
     {
         machine = MachineSimulation.GetMachineSnapshot();
         recentEvents = MachineSimulation.GetRecentEvents();
     }
+
+    private static string GetEventLabel(ProductionEventType eventType) => eventType switch
+    {
+        ProductionEventType.MachineStarted => "Machine started",
+        ProductionEventType.MachineStopped => "Machine stopped",
+        ProductionEventType.FaultRaised => "Fault raised",
+        ProductionEventType.FaultCleared => "Fault cleared",
+        ProductionEventType.UnitCompleted => "Unit completed",
+        _ => eventType.ToString()
+    };
+
+    private static string GetEventDetails(ProductionEvent productionEvent) =>
+        productionEvent.Duration is { } duration
+            ? $"{productionEvent.Details} · Duration {FormatDuration(duration)}"
+            : productionEvent.Details;
+
+    private static string FormatDuration(TimeSpan duration) =>
+        $"{(int)duration.TotalHours:00}:{duration.Minutes:00}:{duration.Seconds:00}";
 
     public async ValueTask DisposeAsync()
     {

@@ -6,4 +6,5 @@ public sealed record MachineSnapshot(
     MachineState CurrentState,
     long CompletedUnitCount,
     long GoodUnitCount,
-    long RejectedUnitCount);
+    long RejectedUnitCount,
+    ActiveFaultSnapshot? ActiveFault);

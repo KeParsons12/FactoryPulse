@@ -7,4 +7,12 @@ public interface IMachineSimulation
     MachineSnapshot GetMachineSnapshot();
 
     IReadOnlyList<ProductionEvent> GetRecentEvents();
+
+    bool TryStart();
+
+    bool TryStop();
+
+    bool TryInjectFault();
+
+    bool TryClearFault();
 }
