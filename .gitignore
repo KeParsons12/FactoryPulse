@@ -67,6 +67,7 @@ artifacts/
 .dotnet-home/
 .nuget/
 /src/FactoryPulse.Web/App_Data/DataProtectionKeys/
+**/pki/
 *.db
 *.db-shm
 *.db-wal

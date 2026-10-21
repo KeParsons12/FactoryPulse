@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opc:ModelDesign
+  xmlns:opc="http://opcfoundation.org/UA/ModelDesign.xsd"
+  xmlns:ua="http://opcfoundation.org/UA/"
+  xmlns="urn:factorypulse:opcua:machine"
+  TargetNamespace="urn:factorypulse:opcua:machine"
+  TargetXmlNamespace="urn:factorypulse:opcua:machine:types"
+  TargetVersion="1.0.0"
+  TargetPublicationDate="2026-10-21T00:00:00Z">
+
+  <opc:Namespaces>
+    <opc:Namespace Name="FactoryPulseMachine" Prefix="FactoryPulseMachine"
+      XmlNamespace="urn:factorypulse:opcua:machine:types"
+      XmlPrefix="FactoryPulseMachine">urn:factorypulse:opcua:machine</opc:Namespace>
+    <opc:Namespace Name="OpcUa" Prefix="Opc.Ua"
+      XmlNamespace="http://opcfoundation.org/UA/2008/02/Types.xsd"
+      XmlPrefix="OpcUa">http://opcfoundation.org/UA/</opc:Namespace>
+  </opc:Namespaces>
+
+  <opc:Object SymbolicName="Machine01" NumericId="1000" TypeDefinition="ua:BaseObjectType">
+    <opc:Description>Independent FactoryPulse simulated manufacturing machine.</opc:Description>
+    <opc:References>
+      <opc:Reference IsInverse="true">
+        <opc:ReferenceType>ua:Organizes</opc:ReferenceType>
+        <opc:TargetId>ua:ObjectsFolder</opc:TargetId>
+      </opc:Reference>
+    </opc:References>
+    <opc:Children>
+      <opc:Variable SymbolicName="State" NumericId="1001" DataType="ua:String" AccessLevel="Read" />
+      <opc:Variable SymbolicName="GoodCount" NumericId="1002" DataType="ua:UInt32" AccessLevel="Read" />
+      <opc:Variable SymbolicName="RejectCount" NumericId="1003" DataType="ua:UInt32" AccessLevel="Read" />
+      <opc:Variable SymbolicName="TotalCount" NumericId="1004" DataType="ua:UInt32" AccessLevel="Read" />
+      <opc:Variable SymbolicName="FaultCode" NumericId="1005" DataType="ua:String" AccessLevel="Read" />
+      <opc:Variable SymbolicName="Heartbeat" NumericId="1006" DataType="ua:UInt32" AccessLevel="Read" />
+    </opc:Children>
+  </opc:Object>
+</opc:ModelDesign>
