@@ -15,9 +15,9 @@ public static class BehindTheBuildContent
             true),
         new(
             "Git commits",
-            "14",
+            "15",
             "Measured",
-            "Repository commit count through the Behind the Build release, measured with git rev-list --count HEAD.",
+            "Repository commit count through the testing-time metric update, measured with git rev-list --count HEAD.",
             true),
         new(
             "Completed milestones",
@@ -30,6 +30,13 @@ public static class BehindTheBuildContent
             "32",
             "Verified",
             "Passing xUnit tests reported by dotnet test on October 22, 2026. This is a test count, not a coverage percentage.",
+            true),
+        new(
+            "Estimated hands-on testing",
+            "65 minutes",
+            "Self-reported estimate",
+            "13 commits × approximately 5 minutes of manual testing per commit. This is a self-reported estimate of hands-on testing, not total human development time. Time spent planning, prompting, reviewing, and making engineering decisions was not separately tracked. AI handled most implementation; human involvement focused on requirements, technical direction, reviews, and testing.",
+            true,
             true),
         new(
             "Human development hours",
@@ -182,7 +189,8 @@ public sealed record BuildMetric(
     string Value,
     string Status,
     string Methodology,
-    bool IsMeasured);
+    bool IsMeasured,
+    bool IsHighlighted = false);
 
 public sealed record WorkflowStage(string Number, string Title, string Description);
 

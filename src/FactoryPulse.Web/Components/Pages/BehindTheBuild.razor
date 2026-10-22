@@ -59,16 +59,23 @@
             <div class="stats-grid">
                 @foreach (var metric in BehindTheBuildContent.ProjectMetrics)
                 {
-                    <article class="stat-card @(metric.IsMeasured ? "is-measured" : "is-unknown")">
+                    <article class="stat-card @(metric.IsMeasured ? "is-measured" : "is-unknown") @(metric.IsHighlighted ? "is-highlighted" : null)">
                         <div class="stat-topline">
                             <span>@metric.Label</span>
                             <span class="metric-status">@metric.Status</span>
                         </div>
                         <strong>@metric.Value</strong>
-                        <details class="metric-method">
-                            <summary>How this is sourced</summary>
-                            <p>@metric.Methodology</p>
-                        </details>
+                        @if (metric.IsHighlighted)
+                        {
+                            <p class="metric-note">@metric.Methodology</p>
+                        }
+                        else
+                        {
+                            <details class="metric-method">
+                                <summary>How this is sourced</summary>
+                                <p>@metric.Methodology</p>
+                            </details>
+                        }
                     </article>
                 }
             </div>

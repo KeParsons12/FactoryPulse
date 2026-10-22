@@ -353,6 +353,12 @@
     background: #101a23;
 }
 
+.stat-card.is-highlighted {
+    grid-column: span 2;
+    border-color: #4b8db5;
+    background: linear-gradient(135deg, #142737 0%, #111d27 100%);
+}
+
 .stat-topline {
     display: flex;
     align-items: flex-start;
@@ -405,6 +411,14 @@
 
 .metric-method p {
     margin: .65rem 0 0;
+}
+
+.metric-note {
+    max-width: 52rem;
+    margin: 0;
+    color: #a9bac6;
+    font-size: .75rem;
+    line-height: 1.65;
 }
 
 .workflow-track {
@@ -991,6 +1005,10 @@
 
     .stat-card {
         min-height: 0;
+    }
+
+    .stat-card.is-highlighted {
+        grid-column: span 1;
     }
 
     .workflow-track {
