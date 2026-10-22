@@ -1,0 +1,268 @@
+@page "/behind-the-build"
+@using FactoryPulse.Web.Content
+
+<PageTitle>Behind the Build | FactoryPulse</PageTitle>
+
+<div class="build-page">
+    <nav class="build-nav" aria-label="Case study navigation">
+        <a class="brand-lockup" href="/">
+            <span class="brand-mark" aria-hidden="true">FP</span>
+            <span><strong>FactoryPulse</strong><small>Engineering case study</small></span>
+        </a>
+        <div class="nav-actions">
+            <a class="text-link" href="@BehindTheBuildContent.RepositoryUrl" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+            <a class="dashboard-link" href="/">Open dashboard <span aria-hidden="true">→</span></a>
+        </div>
+    </nav>
+
+    <main>
+        <section class="hero" aria-labelledby="page-title">
+            <div class="hero-copy">
+                <p class="kicker"><span></span> Build record · @BehindTheBuildContent.SnapshotDate</p>
+                <h1 id="page-title">Behind the <em>Build</em></h1>
+                <p class="hero-subtitle">AI-Assisted Development. Human-Directed Engineering.</p>
+                <p class="hero-intro">
+                    FactoryPulse is an industrial monitoring demonstration built through a milestone-driven,
+                    AI-assisted workflow. Codex contributed heavily to implementation; the problem definition,
+                    requirements, architecture choices, reviews, validation, and responsibility for the result
+                    remained human-led.
+                </p>
+                <div class="hero-actions">
+                    <a class="primary-action" href="/">Explore the live dashboard <span aria-hidden="true">→</span></a>
+                    <a class="secondary-action" href="@BehindTheBuildContent.RepositoryUrl" target="_blank" rel="noopener noreferrer">Review the source <span aria-hidden="true">↗</span></a>
+                </div>
+            </div>
+
+            <aside class="hero-console" aria-label="Project engineering summary">
+                <div class="console-bar"><span></span><span></span><span></span><small>build-profile.json</small></div>
+                <dl>
+                    <div><dt>domain</dt><dd>industrial monitoring</dd></div>
+                    <div><dt>delivery</dt><dd>6 verified milestones</dd></div>
+                    <div><dt>validation</dt><dd class="signal-good">32 tests passing</dd></div>
+                    <div><dt>telemetry</dt><dd>OPC UA · encrypted</dd></div>
+                    <div><dt>persistence</dt><dd>SQLite · observable</dd></div>
+                    <div><dt>ownership</dt><dd class="signal-human">human directed</dd></div>
+                </dl>
+                <p><span class="pulse" aria-hidden="true"></span> Repository-backed facts only</p>
+            </aside>
+        </section>
+
+        <section class="section-block stats-section" aria-labelledby="statistics-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">01 / Evidence</p>
+                    <h2 id="statistics-heading">Development statistics</h2>
+                </div>
+                <p>Measured facts are separated from unknowns. Expand any card to inspect its methodology.</p>
+            </div>
+
+            <div class="stats-grid">
+                @foreach (var metric in BehindTheBuildContent.ProjectMetrics)
+                {
+                    <article class="stat-card @(metric.IsMeasured ? "is-measured" : "is-unknown")">
+                        <div class="stat-topline">
+                            <span>@metric.Label</span>
+                            <span class="metric-status">@metric.Status</span>
+                        </div>
+                        <strong>@metric.Value</strong>
+                        <details class="metric-method">
+                            <summary>How this is sourced</summary>
+                            <p>@metric.Methodology</p>
+                        </details>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="section-block workflow-section" aria-labelledby="workflow-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">02 / Process</p>
+                    <h2 id="workflow-heading">A directed AI workflow</h2>
+                </div>
+                <p>AI accelerated implementation inside an engineering loop—not outside one.</p>
+            </div>
+
+            <ol class="workflow-track">
+                @foreach (var stage in BehindTheBuildContent.Workflow)
+                {
+                    <li>
+                        <span class="stage-number">@stage.Number</span>
+                        <h3>@stage.Title</h3>
+                        <p>@stage.Description</p>
+                    </li>
+                }
+            </ol>
+        </section>
+
+        <section class="section-block timeline-section" aria-labelledby="timeline-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">03 / Delivery</p>
+                    <h2 id="timeline-heading">Built incrementally</h2>
+                </div>
+                <p>Each milestone added one layer of industrial behavior while keeping the application runnable.</p>
+            </div>
+
+            <ol class="timeline-list">
+                @foreach (var milestone in BehindTheBuildContent.Milestones)
+                {
+                    <li>
+                        <span class="timeline-marker" aria-hidden="true">@milestone.Number.ToString("00")</span>
+                        <details class="timeline-card" open="@(milestone.Number == 1)">
+                            <summary>
+                                <span>
+                                    <small>Milestone @milestone.Number · <time datetime="@milestone.CompletedOn.ToString("yyyy-MM-dd")">@milestone.CompletedOn.ToString("MMM d, yyyy")</time></small>
+                                    <strong>@milestone.Title</strong>
+                                </span>
+                                <span class="expand-label"><span class="when-closed">Expand</span><span class="when-open">Collapse</span></span>
+                            </summary>
+                            <div class="timeline-detail">
+                                <p>@milestone.Description</p>
+                                <div class="concept-list" aria-label="Technologies and concepts">
+                                    @foreach (var concept in milestone.Concepts)
+                                    {
+                                        <span>@concept</span>
+                                    }
+                                </div>
+                                <a href="@milestone.CommitUrl" target="_blank" rel="noopener noreferrer">View commit @milestone.Commit <span aria-hidden="true">↗</span></a>
+                            </div>
+                        </details>
+                    </li>
+                }
+            </ol>
+        </section>
+
+        <section class="section-block challenges-section" aria-labelledby="challenges-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">04 / Judgment</p>
+                    <h2 id="challenges-heading">Where review changed the result</h2>
+                </div>
+                <p>The strongest evidence of engineering is not first-pass output—it is finding what could fail and correcting it.</p>
+            </div>
+
+            <div class="challenge-grid">
+                @foreach (var challenge in BehindTheBuildContent.Challenges)
+                {
+                    <article class="challenge-card">
+                        <header>
+                            <span class="challenge-icon" aria-hidden="true">!</span>
+                            <h3>@challenge.Title</h3>
+                        </header>
+                        <dl>
+                            <div><dt>What surfaced</dt><dd>@challenge.Problem</dd></div>
+                            <div><dt>Why it mattered</dt><dd>@challenge.Impact</dd></div>
+                            <div class="resolution"><dt>Engineering response</dt><dd>@challenge.Resolution</dd></div>
+                        </dl>
+                        <a href="@challenge.CommitUrl" target="_blank" rel="noopener noreferrer">Evidence: @challenge.Commit <span aria-hidden="true">↗</span></a>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="section-block stack-section" aria-labelledby="stack-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">05 / System</p>
+                    <h2 id="stack-heading">Technology with a job to do</h2>
+                </div>
+                <p>No ornamental dependencies. Each item below has a verified role in the repository.</p>
+            </div>
+
+            <div class="stack-grid">
+                @foreach (var technology in BehindTheBuildContent.Technologies)
+                {
+                    <article>
+                        <span class="stack-node" aria-hidden="true"></span>
+                        <h3>@technology.Name</h3>
+                        <p>@technology.Role</p>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <section class="section-block usage-section" aria-labelledby="usage-heading">
+            <div class="section-heading">
+                <div>
+                    <p class="section-index">06 / Transparency</p>
+                    <h2 id="usage-heading">AI usage, without invented precision</h2>
+                </div>
+                <p>The interface is ready for audited project metrics later. Unknown values remain visibly unknown today.</p>
+            </div>
+
+            <div class="usage-layout">
+                <div class="usage-table" role="list" aria-label="AI usage metrics">
+                    @foreach (var metric in BehindTheBuildContent.AiUsageMetrics)
+                    {
+                        <div role="listitem">
+                            <span>@metric.Label</span>
+                            <strong class="@(metric.IsMeasured ? null : "unknown-value")">@metric.Value</strong>
+                            <p>@metric.Methodology</p>
+                        </div>
+                    }
+                </div>
+                <aside class="data-guardrail">
+                    <p class="section-index">Data guardrail</p>
+                    <h3>What is deliberately not claimed</h3>
+                    <ul>
+                        <li>Commit timestamps are not converted into human hours.</li>
+                        <li>Source-code size is not converted into token usage.</li>
+                        <li>Subscription access is not presented as API billing.</li>
+                        <li>No private transcripts, credentials, or raw session logs are published.</li>
+                        <li>No speedup is stated without a recorded comparison baseline.</li>
+                    </ul>
+                </aside>
+            </div>
+        </section>
+
+        <section class="section-block value-section" aria-labelledby="value-heading">
+            <div class="value-copy">
+                <p class="section-index">07 / Value</p>
+                <h2 id="value-heading">Why the workflow matters</h2>
+                <p>
+                    AI assistance can shorten repetitive implementation cycles, accelerate prototypes, generate test
+                    scaffolding, and make unfamiliar protocols faster to explore. For a small engineering team, that can
+                    mean more capacity for integration, validation, and operator-focused refinement.
+                </p>
+                <p>
+                    The benefit is conditional: complex domain rules, security decisions, time-bound calculations, and
+                    failure handling still demand careful review. FactoryPulse treats speed as useful only when the result
+                    remains understandable, testable, and honest about its limits.
+                </p>
+            </div>
+            <blockquote>
+                <span aria-hidden="true">“</span>
+                <p>AI accelerates implementation. Engineering judgment determines whether the result is reliable.</p>
+                <footer>FactoryPulse engineering principle</footer>
+            </blockquote>
+        </section>
+
+        <section class="engineering-commitment" aria-labelledby="commitment-heading">
+            <p class="section-index">Professional responsibility</p>
+            <h2 id="commitment-heading">Understand it. Challenge it. Own it.</h2>
+            <p>
+                Generated code is still delivered code. That means maintaining clear requirements, understanding the
+                implementation, validating assumptions, testing edge cases, reviewing security and reliability, and
+                taking responsibility for every behavior exposed to an operator.
+            </p>
+        </section>
+
+        <section class="final-cta" aria-labelledby="cta-heading">
+            <div>
+                <p class="section-index">Continue exploring</p>
+                <h2 id="cta-heading">See the engineering in motion.</h2>
+                <p>Operate the simulator, inspect the telemetry, and review the source behind each decision.</p>
+            </div>
+            <div class="cta-actions">
+                <a class="primary-action" href="/">Launch the dashboard <span aria-hidden="true">→</span></a>
+                <a class="secondary-action" href="@BehindTheBuildContent.RepositoryUrl" target="_blank" rel="noopener noreferrer">Browse GitHub <span aria-hidden="true">↗</span></a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="build-footer">
+        <span>FactoryPulse · Industrial software portfolio project</span>
+        <a href="#page-title">Back to top ↑</a>
+    </footer>
+</div>

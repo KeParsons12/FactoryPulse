@@ -18,6 +18,34 @@
     margin-bottom: 1.5rem;
 }
 
+.dashboard-header-actions {
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+}
+
+.build-story-link {
+    padding: .55rem .8rem;
+    border: 1px solid #355b74;
+    border-radius: .5rem;
+    background: #132737;
+    color: #8ed1f8;
+    font-size: .78rem;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.build-story-link:hover {
+    border-color: #5b9dc5;
+    background: #19344a;
+    color: #c4e9ff;
+}
+
+.build-story-link:focus-visible {
+    outline: 2px solid #72baff;
+    outline-offset: 2px;
+}
+
 .dashboard-header h1 {
     margin: 0;
     color: #f7fafc;
@@ -717,6 +745,18 @@
     .analytics-heading {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .dashboard-header-actions {
+        width: 100%;
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .build-story-link,
+    .simulation-label {
+        justify-content: center;
+        text-align: center;
     }
 
     .opcua-heading,
