@@ -4,13 +4,15 @@ FactoryPulse is a small .NET 10 Blazor manufacturing simulator for a single mach
 
 ## Local operation
 
-From the repository root, start the complete demonstration with one command:
+From PowerShell or Command Prompt at the repository root, start the complete demonstration with one command:
 
-```powershell
-.\start-demo.ps1
+```bat
+start-demo.cmd
 ```
 
-The script builds the solution, starts the OPC UA simulator, waits for its endpoint, starts the web application with the HTTP development profile, and waits for the dashboard to respond. Open [http://localhost:5153](http://localhost:5153).
+From PowerShell, `./start-demo.cmd` or `.\start-demo.cmd` also works. The CMD wrapper runs `start-demo.ps1` with an execution-policy bypass scoped only to that PowerShell process. It does not change the current-user, local-machine, or system execution policy, so a separate `Set-ExecutionPolicy` command is not required.
+
+The launcher builds the solution, starts the OPC UA simulator, waits for its endpoint, starts the web application with the HTTP development profile, and waits for the dashboard to respond. Open [http://localhost:5153](http://localhost:5153).
 
 Use the same terminal for the external simulator controls:
 
@@ -48,7 +50,7 @@ The simulator listens only on `opc.tcp://localhost:62560/FactoryPulse`. When run
 
 ### First-run certificate trust
 
-The first connection is expected to fail because neither application trusts the other's self-signed application certificate. This is the safe default. Run `.\start-demo.ps1` once, stop it with `Q`, and inspect these rejected-certificate folders:
+The first connection is expected to fail because neither application trusts the other's self-signed application certificate. This is the safe default. Run `start-demo.cmd` once, stop it with `Q`, and inspect these rejected-certificate folders:
 
 ```powershell
 Get-ChildItem .\pki\rejected\certs
